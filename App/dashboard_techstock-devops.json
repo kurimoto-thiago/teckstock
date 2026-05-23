@@ -1,0 +1,656 @@
+{
+  "dashboard": {
+    "uid": "techstock-devops",
+    "title": "TechStock \u2014 DevOps \u00b7 Containers \u00b7 Deploy",
+    "tags": [
+      "techstock",
+      "docker",
+      "ecs",
+      "kubernetes"
+    ],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "text",
+        "title": "",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 24,
+          "h": 2
+        },
+        "options": {
+          "mode": "markdown",
+          "content": "## \ud83d\udc33 DevOps \u2014 Containers e Orquestra\u00e7\u00e3o\nSa\u00fade dos containers e m\u00e9tricas de deploy. Para m\u00e9tricas ECS/EKS nativas: configure o datasource **CloudWatch** (namespace `ECS/ContainerInsights`)."
+        }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "API Online",
+        "description": "",
+        "gridPos": {
+          "x": 0,
+          "y": 2,
+          "w": 4,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "up{job=\"techstock-app\"}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 3,
+        "type": "stat",
+        "title": "Node Exporter Backend Online",
+        "description": "",
+        "gridPos": {
+          "x": 4,
+          "y": 2,
+          "w": 4,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "up{job=\"node-exporter-backend\"}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 4,
+        "type": "stat",
+        "title": "Node Exporter Monitoring Online",
+        "description": "",
+        "gridPos": {
+          "x": 8,
+          "y": 2,
+          "w": 4,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "up{job=\"node-exporter-monitoring\"}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 5,
+        "type": "stat",
+        "title": "Total Targets UP",
+        "description": "",
+        "gridPos": {
+          "x": 12,
+          "y": 2,
+          "w": 4,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "sum(up)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 3
+                },
+                {
+                  "color": "green",
+                  "value": 4
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 6,
+        "type": "stat",
+        "title": "Uptime da Aplica\u00e7\u00e3o (s)",
+        "description": "",
+        "gridPos": {
+          "x": 16,
+          "y": 2,
+          "w": 4,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "techstock_nodejs_eventloop_lag_seconds",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 7,
+        "type": "stat",
+        "title": "Process Restart Rate",
+        "description": "N\u00famero de restarts da aplica\u00e7\u00e3o na \u00faltima hora",
+        "gridPos": {
+          "x": 20,
+          "y": 2,
+          "w": 4,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "changes(process_start_time_seconds{job=\"techstock-app\"}[1h])",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 1
+                },
+                {
+                  "color": "red",
+                  "value": 3
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 8,
+        "type": "timeseries",
+        "title": "Mem\u00f3ria Heap (Container Backend)",
+        "description": "Heap do container Node.js. Limite configurado na Task Definition / K8s resources",
+        "gridPos": {
+          "x": 0,
+          "y": 6,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "techstock_nodejs_heap_size_used_bytes",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 9,
+        "type": "timeseries",
+        "title": "CPU Processo Node.js",
+        "description": "CPU consumida pelo processo Node.js dentro do container",
+        "gridPos": {
+          "x": 12,
+          "y": 6,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(process_cpu_seconds_total{job=\"techstock-app\"}[1m]) * 100",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 10,
+        "type": "timeseries",
+        "title": "GC Frequency (collections/min)",
+        "description": "Frequ\u00eancia de Garbage Collection. Alta = container com mem\u00f3ria insuficiente",
+        "gridPos": {
+          "x": 0,
+          "y": 14,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(techstock_nodejs_gc_duration_seconds_count[5m]) * 60",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 11,
+        "type": "timeseries",
+        "title": "File Descriptors Abertos",
+        "description": "FDs abertos no container. Crescimento = leak de conex\u00f5es/arquivos",
+        "gridPos": {
+          "x": 12,
+          "y": 14,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "process_open_fds{job=\"techstock-app\"}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 12,
+        "type": "timeseries",
+        "title": "Prometheus Scrape \u2014 Dura\u00e7\u00e3o (ms)",
+        "description": "Tempo que o Prometheus leva para raspar m\u00e9tricas. >1s = problema",
+        "gridPos": {
+          "x": 0,
+          "y": 22,
+          "w": 12,
+          "h": 6
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "scrape_duration_seconds{job=\"techstock-app\"} * 1000",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 13,
+        "type": "timeseries",
+        "title": "Amostras Coletadas por Job",
+        "description": "",
+        "gridPos": {
+          "x": 12,
+          "y": 22,
+          "w": 12,
+          "h": 6
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "scrape_samples_scraped",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      }
+    ]
+  },
+  "overwrite": true,
+  "folderId": 0
+}

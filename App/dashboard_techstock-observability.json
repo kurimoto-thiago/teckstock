@@ -1,0 +1,461 @@
+{
+  "dashboard": {
+    "uid": "techstock-observability",
+    "title": "TechStock \u2014 Stack de Observabilidade",
+    "tags": [
+      "techstock",
+      "prometheus",
+      "grafana",
+      "monitoring"
+    ],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "text",
+        "title": "",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 24,
+          "h": 2
+        },
+        "options": {
+          "mode": "markdown",
+          "content": "## \ud83d\udcca Stack de Observabilidade \u2014 Prometheus + Grafana\nSa\u00fade do pr\u00f3prio sistema de monitoramento. Se este dashboard n\u00e3o tiver dados, h\u00e1 problema no Prometheus."
+        }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "S\u00e9ries Temporais Ativas",
+        "description": "",
+        "gridPos": {
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "prometheus_tsdb_head_series",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 3,
+        "type": "stat",
+        "title": "Taxa de Ingest\u00e3o (amostras/s)",
+        "description": "",
+        "gridPos": {
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(prometheus_tsdb_head_samples_appended_total[5m])",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 4,
+        "type": "gauge",
+        "title": "Targets UP / Total",
+        "description": "",
+        "gridPos": {
+          "x": 12,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "sum(up) / count(up)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 0.75
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 5,
+        "type": "stat",
+        "title": "Tamanho TSDB (bytes)",
+        "description": "",
+        "gridPos": {
+          "x": 18,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "prometheus_tsdb_head_chunks_storage_size_bytes",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 6,
+        "type": "timeseries",
+        "title": "Ingest\u00e3o de Amostras \u2014 Hist\u00f3rico",
+        "description": "",
+        "gridPos": {
+          "x": 0,
+          "y": 6,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(prometheus_tsdb_head_samples_appended_total[5m])",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "type": "timeseries",
+        "title": "Mem\u00f3ria Heap do Prometheus",
+        "description": "",
+        "gridPos": {
+          "x": 12,
+          "y": 6,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "go_memstats_heap_alloc_bytes{job=\"prometheus\"}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 8,
+        "type": "timeseries",
+        "title": "Dura\u00e7\u00e3o dos Scrapes por Job",
+        "description": "",
+        "gridPos": {
+          "x": 0,
+          "y": 14,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "scrape_duration_seconds",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 9,
+        "type": "timeseries",
+        "title": "Targets por Estado",
+        "description": "",
+        "gridPos": {
+          "x": 12,
+          "y": 14,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "sum by(job) (up)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 10,
+        "type": "timeseries",
+        "title": "Erros de Scrape",
+        "description": "",
+        "gridPos": {
+          "x": 0,
+          "y": 22,
+          "w": 24,
+          "h": 6
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "sum by(job) (scrape_samples_post_metric_relabeling)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      }
+    ]
+  },
+  "overwrite": true,
+  "folderId": 0
+}

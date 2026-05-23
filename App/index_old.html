@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TechStock — Controle de Estoque</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    📦 TechStock <span>Controle de Estoque</span>
+    <span class="host-info" id="hostname-info"></span>
+  </div>
+  <div id="api-badge" class="api-badge busy" onclick="openConfig()" title="Clique para configurar o endpoint">⬤ Conectando...</div>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" onclick="showPage('dashboard')">📊 Dashboard</button>
+  <button class="nav-btn"        onclick="showPage('produtos')">📦 Produtos</button>
+  <button class="nav-btn"        onclick="showPage('alertas')">🔔 Alertas</button>
+</div>
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="cards">
+    <div class="card"><div class="card-icon">📦</div><div class="card-label">Total Produtos</div><div class="card-value" id="s-total">—</div></div>
+    <div class="card"><div class="card-icon">⚠️</div><div class="card-label">Alertas</div><div class="card-value warn" id="s-alert">—</div></div>
+    <div class="card"><div class="card-icon">💰</div><div class="card-label">Valor em Estoque</div><div class="card-value ok" id="s-valor">—</div></div>
+    <div class="card"><div class="card-icon">🔄</div><div class="card-label">Mov. 24h</div><div class="card-value" id="s-mov">—</div></div>
+  </div>
+  <div class="banner hidden" id="banner">⚠️ <span id="banner-txt"></span><button class="btn btn-sm btn-o" style="margin-left:auto" onclick="showPage('alertas')">Ver alertas</button></div>
+  <div class="tw">
+    <div class="th"><h2>Itens Críticos</h2></div>
+    <table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Local</th><th>Estoque</th></tr></thead>
+    <tbody id="dash-tb"><tr class="empty"><td colspan="5"><span class="spin"></span>Carregando...</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- PRODUTOS -->
+<div class="page" id="page-produtos">
+  <div class="tw">
+    <div class="th">
+      <h2>Produtos</h2>
+      <div class="ta">
+        <input class="inp inp-w" id="busca" placeholder="🔍 Nome ou código..." oninput="debounce(loadProd,400)()">
+        <select class="inp" id="f-cat" onchange="loadProd()"><option value="">Todas categorias</option></select>
+        <button class="btn btn-p" onclick="openNovo()">+ Novo</button>
+      </div>
+    </div>
+    <table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Local</th><th>Estoque</th><th>Custo</th><th>Ações</th></tr></thead>
+    <tbody id="prod-tb"><tr class="empty"><td colspan="7"><span class="spin"></span>Carregando...</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- ALERTAS -->
+<div class="page" id="page-alertas">
+  <div class="tw">
+    <div class="th"><h2>🔔 Abaixo do Mínimo</h2></div>
+    <table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Local</th><th>Estoque</th><th>Ações</th></tr></thead>
+    <tbody id="alert-tb"><tr class="empty"><td colspan="6"><span class="spin"></span>Carregando...</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- MODAL PRODUTO -->
+<div class="ov" id="ov-prod">
+  <div class="modal">
+    <div class="mh"><h3 id="m-prod-title">Novo Produto</h3><button class="mclose" onclick="closeModal('ov-prod')">✕</button></div>
+    <div class="mb">
+      <input type="hidden" id="p-id">
+      <div class="fr">
+        <div class="fg">
+          <label>Código <span style="font-size:11px;color:var(--muted);font-weight:400">(gerado automaticamente)</span></label>
+          <input class="inp" id="p-cod" readonly
+            style="background:#F1F5F9;color:#64748B;cursor:default"
+            placeholder="Selecione a categoria…">
+        </div>
+        <div class="fg"><label>Unidade</label>
+          <select class="inp" id="p-un">
+            <option value="un">un</option><option value="cx">cx</option>
+            <option value="rolo">rolo</option><option value="kg">kg</option>
+            <option value="lt">lt</option><option value="m">m</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg"><label>Nome *</label><input class="inp" id="p-nome" placeholder="Nome do produto"></div>
+      <div class="fg"><label>Descrição</label><input class="inp" id="p-desc" placeholder="Opcional"></div>
+      <div class="fr">
+        <div class="fg"><label>Categoria</label><select class="inp" id="p-cat" onchange="onCatChange()"><option value="">Sem categoria</option></select></div>
+        <div class="fg"><label>Localização</label><input class="inp" id="p-loc" placeholder="A1-01"></div>
+      </div>
+      <div class="fr">
+        <div class="fg"><label>Qtd. Inicial</label><input class="inp" type="number" id="p-qty" value="0" min="0"></div>
+        <div class="fg"><label>Qtd. Mínima</label><input class="inp" type="number" id="p-min" value="5" min="0"></div>
+      </div>
+      <div class="fg"><label>Preço de Custo (R$)</label><input class="inp" type="number" id="p-custo" value="0" step="0.01" min="0"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-o" onclick="closeModal('ov-prod')">Cancelar</button>
+      <button class="btn btn-p" onclick="saveProd()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MOVIMENTAÇÃO -->
+<div class="ov" id="ov-mov">
+  <div class="modal">
+    <div class="mh"><h3>Movimentar Estoque</h3><button class="mclose" onclick="closeModal('ov-mov')">✕</button></div>
+    <div class="mb">
+      <input type="hidden" id="m-pid">
+      <div class="fg"><label>Produto</label><div id="m-pnome" style="font-weight:600;font-size:15px;padding:6px 0"></div></div>
+      <div class="fr">
+        <div class="fg"><label>Tipo *</label>
+          <select class="inp" id="m-tipo">
+            <option value="entrada">📥 Entrada</option>
+            <option value="saida">📤 Saída</option>
+            <option value="ajuste">⚖️ Ajuste</option>
+          </select>
+        </div>
+        <div class="fg"><label>Quantidade *</label><input class="inp" type="number" id="m-qty" value="1" min="1"></div>
+      </div>
+      <div class="fg"><label>Motivo</label><input class="inp" id="m-motivo" placeholder="Ex: Compra NF-001"></div>
+      <div class="fg"><label>Responsável</label><input class="inp" id="m-resp" value="web" placeholder="Nome ou matrícula"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-o" onclick="closeModal('ov-mov')">Cancelar</button>
+      <button class="btn btn-p" onclick="saveMov()">✅ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL HISTÓRICO -->
+<div class="ov" id="ov-hist">
+  <div class="modal" style="max-width:460px">
+    <div class="mh"><h3>Histórico de Movimentos</h3><button class="mclose" onclick="closeModal('ov-hist')">✕</button></div>
+    <div class="mb" id="hist-body"><div class="empty" style="text-align:center;padding:30px"><span class="spin"></span>Carregando...</div></div>
+  </div>
+</div>
+
+<!-- MODAL CONFIG -->
+<div class="ov" id="ov-cfg">
+  <div class="modal" style="max-width:480px">
+    <div class="mh"><h3>⚙ Configuração da API</h3><button class="mclose" onclick="closeModal('ov-cfg')">✕</button></div>
+    <div class="mb">
+      <div class="fg">
+        <label>URL do Backend (DNS do ALB)</label>
+        <input class="inp" id="cfg-url" placeholder="http://SEU-ALB.us-east-1.elb.amazonaws.com" style="width:100%">
+        <div class="url-cur">Atual: <span id="cfg-atual"></span></div>
+        <div class="hint">DNS do Application Load Balancer. Salvo no localStorage do browser.</div>
+      </div>
+      <div class="tr-res" id="cfg-res"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-o" onclick="closeModal('ov-cfg')">Cancelar</button>
+      <button class="btn btn-o" onclick="testApi()">🔌 Testar</button>
+      <button class="btn btn-p" onclick="saveConfig()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<button id="btn-cfg" onclick="openConfig()" title="Configurar endpoint da API">⚙</button>
+
+<!-- config.js DEVE ser carregado ANTES de app.js -->
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

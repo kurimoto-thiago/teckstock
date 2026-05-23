@@ -1,0 +1,580 @@
+{
+  "dashboard": {
+    "uid": "techstock-api",
+    "title": "TechStock API \u2014 Vis\u00e3o Geral",
+    "tags": [
+      "techstock",
+      "api",
+      "nodejs"
+    ],
+    "timezone": "browser",
+    "refresh": "15s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "text",
+        "title": "",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 24,
+          "h": 2
+        },
+        "options": {
+          "mode": "markdown",
+          "content": "## \ud83d\ude80 TechStock API \u2014 Monitoramento em Tempo Real\nDashboard personalizado para a aplica\u00e7\u00e3o Node.js. M\u00e9tricas coletadas via **prom-client** no endpoint `/metrics`."
+        }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "Requisi\u00e7\u00f5es/s (\u00faltimos 5min)",
+        "description": "Taxa total de requisi\u00e7\u00f5es HTTP por segundo",
+        "gridPos": {
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(techstock_http_requests_total[5m]))",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 3,
+        "type": "gauge",
+        "title": "Taxa de Erros 5xx (%)",
+        "description": "Percentual de respostas com erro 5xx. Acima de 5% = alerta cr\u00edtico",
+        "gridPos": {
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(techstock_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(techstock_http_requests_total[5m])) * 100",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 1
+                },
+                {
+                  "color": "red",
+                  "value": 5
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 4,
+        "type": "gauge",
+        "title": "Heap Node.js Usado (%)",
+        "description": "% do heap V8 em uso. Acima de 85% = poss\u00edvel memory leak",
+        "gridPos": {
+          "x": 12,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "techstock_nodejs_heap_size_used_bytes / techstock_nodejs_heap_size_total_bytes * 100",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 70
+                },
+                {
+                  "color": "red",
+                  "value": 85
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 5,
+        "type": "gauge",
+        "title": "Event Loop Lag p99 (ms)",
+        "description": "Lat\u00eancia do event loop no percentil 99. Alto = CPU saturada",
+        "gridPos": {
+          "x": 18,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "techstock_nodejs_eventloop_lag_p99_seconds * 1000",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 100
+                },
+                {
+                  "color": "red",
+                  "value": 500
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 6,
+        "type": "timeseries",
+        "title": "Requisi\u00e7\u00f5es HTTP por Status",
+        "description": "Distribui\u00e7\u00e3o por c\u00f3digo HTTP (200, 201, 400, 404, 500...)",
+        "gridPos": {
+          "x": 0,
+          "y": 6,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "sum by(status) (rate(techstock_http_requests_total[5m]))",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "type": "timeseries",
+        "title": "Heap Hist\u00f3rico (bytes)",
+        "description": "Crescimento do heap ao longo do tempo. Tend\u00eancia crescente = leak",
+        "gridPos": {
+          "x": 12,
+          "y": 6,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "techstock_nodejs_heap_size_used_bytes",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 8,
+        "type": "timeseries",
+        "title": "Top 5 Rotas mais Acessadas",
+        "description": "Rotas com maior tr\u00e1fego \u2014 identifica gargalos",
+        "gridPos": {
+          "x": 0,
+          "y": 14,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "topk(5, sum by(path) (rate(techstock_http_requests_total[5m])))",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 9,
+        "type": "timeseries",
+        "title": "Lat\u00eancia por Rota (se configurado)",
+        "description": "Distribui\u00e7\u00e3o de tr\u00e1fego por endpoint",
+        "gridPos": {
+          "x": 12,
+          "y": 14,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(techstock_http_requests_total[5m])",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 10,
+        "type": "timeseries",
+        "title": "GC \u2014 Tempo de Coleta (s/s)",
+        "description": "Tempo gasto em Garbage Collection. Alto = app consumindo muita mem\u00f3ria",
+        "gridPos": {
+          "x": 0,
+          "y": 22,
+          "w": 8,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(techstock_nodejs_gc_duration_seconds_sum[5m])",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 11,
+        "type": "timeseries",
+        "title": "Active Handles & Requests",
+        "description": "Handles ativos (conex\u00f5es, timers, sockets). Crescimento = leak de recursos",
+        "gridPos": {
+          "x": 8,
+          "y": 22,
+          "w": 8,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "techstock_nodejs_active_handles",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 12,
+        "type": "timeseries",
+        "title": "Mem\u00f3ria Externa (bytes)",
+        "description": "Mem\u00f3ria alocada fora do heap V8 (Buffers, native addons)",
+        "gridPos": {
+          "x": 16,
+          "y": 22,
+          "w": 8,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "techstock_nodejs_external_memory_bytes",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      }
+    ]
+  },
+  "overwrite": true,
+  "folderId": 0
+}

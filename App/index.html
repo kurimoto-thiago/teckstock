@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TechStock — Controle de Estoque</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    📦 TechStock <span>Controle de Estoque</span>
+    <span class="host-info" id="hostname-info"></span>
+  </div>
+  <div class="badge-group">
+    <div id="api-badge"   class="api-badge busy"       onclick="openConfig()"        title="API Backend — clique para configurar">⬤ API</div>
+    <div id="graf-badge"  class="api-badge badge-graf"  onclick="openService('graf')" title="Grafana — clique para abrir">⬤ Grafana</div>
+    <div id="prom-badge"  class="api-badge badge-prom"  onclick="openService('prom')" title="Prometheus — clique para abrir">⬤ Prometheus</div>
+  </div>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" onclick="showPage('dashboard')">📊 Dashboard</button>
+  <button class="nav-btn"        onclick="showPage('produtos')">📦 Produtos</button>
+  <button class="nav-btn"        onclick="showPage('alertas')">🔔 Alertas</button>
+</div>
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="cards">
+    <div class="card"><div class="card-icon">📦</div><div class="card-label">Total Produtos</div><div class="card-value" id="s-total">—</div></div>
+    <div class="card"><div class="card-icon">⚠️</div><div class="card-label">Alertas</div><div class="card-value warn" id="s-alert">—</div></div>
+    <div class="card"><div class="card-icon">💰</div><div class="card-label">Valor em Estoque</div><div class="card-value ok" id="s-valor">—</div></div>
+    <div class="card"><div class="card-icon">🔄</div><div class="card-label">Mov. 24h</div><div class="card-value" id="s-mov">—</div></div>
+  </div>
+  <div class="banner hidden" id="banner">⚠️ <span id="banner-txt"></span><button class="btn btn-sm btn-o" style="margin-left:auto" onclick="showPage('alertas')">Ver alertas</button></div>
+  <div class="tw">
+    <div class="th"><h2>Itens Críticos</h2></div>
+    <table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Local</th><th>Estoque</th></tr></thead>
+    <tbody id="dash-tb"><tr class="empty"><td colspan="5"><span class="spin"></span>Carregando...</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- PRODUTOS -->
+<div class="page" id="page-produtos">
+  <div class="tw">
+    <div class="th">
+      <h2>Produtos</h2>
+      <div class="ta">
+        <input class="inp inp-w" id="busca" placeholder="🔍 Nome ou código..." oninput="debounce(loadProd,400)()">
+        <select class="inp" id="f-cat" onchange="loadProd()"><option value="">Todas categorias</option></select>
+        <button class="btn btn-p" onclick="openNovo()">+ Novo</button>
+      </div>
+    </div>
+    <table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Local</th><th>Estoque</th><th>Custo</th><th>Ações</th></tr></thead>
+    <tbody id="prod-tb"><tr class="empty"><td colspan="7"><span class="spin"></span>Carregando...</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- ALERTAS -->
+<div class="page" id="page-alertas">
+  <div class="tw">
+    <div class="th"><h2>🔔 Abaixo do Mínimo</h2></div>
+    <table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Local</th><th>Estoque</th><th>Ações</th></tr></thead>
+    <tbody id="alert-tb"><tr class="empty"><td colspan="6"><span class="spin"></span>Carregando...</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- MODAL PRODUTO -->
+<div class="ov" id="ov-prod">
+  <div class="modal">
+    <div class="mh"><h3 id="m-prod-title">Novo Produto</h3><button class="mclose" onclick="closeModal('ov-prod')">✕</button></div>
+    <div class="mb">
+      <input type="hidden" id="p-id">
+      <div class="fr">
+        <div class="fg">
+          <label>Código <span style="font-size:11px;color:var(--muted);font-weight:400">(gerado automaticamente)</span></label>
+          <input class="inp" id="p-cod" readonly
+            style="background:#F1F5F9;color:#64748B;cursor:default"
+            placeholder="Selecione a categoria…">
+        </div>
+        <div class="fg"><label>Unidade</label>
+          <select class="inp" id="p-un">
+            <option value="un">un</option><option value="cx">cx</option>
+            <option value="rolo">rolo</option><option value="kg">kg</option>
+            <option value="lt">lt</option><option value="m">m</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg"><label>Nome *</label><input class="inp" id="p-nome" placeholder="Nome do produto"></div>
+      <div class="fg"><label>Descrição</label><input class="inp" id="p-desc" placeholder="Opcional"></div>
+      <div class="fr">
+        <div class="fg"><label>Categoria</label><select class="inp" id="p-cat" onchange="onCatChange()"><option value="">Sem categoria</option></select></div>
+        <div class="fg"><label>Localização</label><input class="inp" id="p-loc" placeholder="A1-01"></div>
+      </div>
+      <div class="fr">
+        <div class="fg"><label>Qtd. Inicial</label><input class="inp" type="number" id="p-qty" value="0" min="0"></div>
+        <div class="fg"><label>Qtd. Mínima</label><input class="inp" type="number" id="p-min" value="5" min="0"></div>
+      </div>
+      <div class="fg"><label>Preço de Custo (R$)</label><input class="inp" type="number" id="p-custo" value="0" step="0.01" min="0"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-o" onclick="closeModal('ov-prod')">Cancelar</button>
+      <button class="btn btn-p" onclick="saveProd()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MOVIMENTAÇÃO -->
+<div class="ov" id="ov-mov">
+  <div class="modal">
+    <div class="mh"><h3>Movimentar Estoque</h3><button class="mclose" onclick="closeModal('ov-mov')">✕</button></div>
+    <div class="mb">
+      <input type="hidden" id="m-pid">
+      <div class="fg"><label>Produto</label><div id="m-pnome" style="font-weight:600;font-size:15px;padding:6px 0"></div></div>
+      <div class="fr">
+        <div class="fg"><label>Tipo *</label>
+          <select class="inp" id="m-tipo">
+            <option value="entrada">📥 Entrada</option>
+            <option value="saida">📤 Saída</option>
+            <option value="ajuste">⚖️ Ajuste</option>
+          </select>
+        </div>
+        <div class="fg"><label>Quantidade *</label><input class="inp" type="number" id="m-qty" value="1" min="1"></div>
+      </div>
+      <div class="fg"><label>Motivo</label><input class="inp" id="m-motivo" placeholder="Ex: Compra NF-001"></div>
+      <div class="fg"><label>Responsável</label><input class="inp" id="m-resp" value="web" placeholder="Nome ou matrícula"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-o" onclick="closeModal('ov-mov')">Cancelar</button>
+      <button class="btn btn-p" onclick="saveMov()">✅ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL HISTÓRICO -->
+<div class="ov" id="ov-hist">
+  <div class="modal" style="max-width:460px">
+    <div class="mh"><h3>Histórico de Movimentos</h3><button class="mclose" onclick="closeModal('ov-hist')">✕</button></div>
+    <div class="mb" id="hist-body"><div class="empty" style="text-align:center;padding:30px"><span class="spin"></span>Carregando...</div></div>
+  </div>
+</div>
+
+<!-- MODAL CONFIG -->
+<div class="ov" id="ov-cfg">
+  <div class="modal" style="max-width:480px">
+    <div class="mh"><h3>⚙ Configuração da API</h3><button class="mclose" onclick="closeModal('ov-cfg')">✕</button></div>
+    <div class="mb">
+      <!-- API Backend -->
+      <div class="cfg-section">
+        <div class="cfg-section-label">🔵 Backend / API</div>
+        <div class="fg">
+          <label>URL do Backend (DNS do ALB)</label>
+          <input class="inp" id="cfg-url" placeholder="http://SEU-ALB.us-east-1.elb.amazonaws.com" style="width:100%">
+          <div class="url-cur">Atual: <span id="cfg-atual"></span></div>
+          <div class="hint">DNS do ALB sem barra no final. Salvo no localStorage.</div>
+        </div>
+        <div class="tr-res" id="cfg-res"></div>
+      </div>
+
+      <!-- Grafana -->
+      <div class="cfg-section">
+        <div class="cfg-section-label">🟠 Grafana</div>
+        <div class="fg">
+          <label>URL do Grafana</label>
+          <input class="inp" id="cfg-graf-url" placeholder="http://SEU-ALB.us-east-1.elb.amazonaws.com/grafana" style="width:100%">
+          <div class="url-cur">Atual: <span id="cfg-graf-atual"></span></div>
+          <div class="hint">URL completa incluindo /grafana. Clique no badge ⬤ Grafana para abrir em nova aba.</div>
+        </div>
+        <div class="tr-res" id="cfg-graf-res"></div>
+      </div>
+
+      <!-- Prometheus -->
+      <div class="cfg-section">
+        <div class="cfg-section-label">🔴 Prometheus</div>
+        <div class="fg">
+          <label>URL do Prometheus</label>
+          <input class="inp" id="cfg-prom-url" placeholder="http://SEU-ALB.us-east-1.elb.amazonaws.com/prometheus" style="width:100%">
+          <div class="url-cur">Atual: <span id="cfg-prom-atual"></span></div>
+          <div class="hint">URL completa incluindo /prometheus. Clique no badge ⬤ Prometheus para abrir em nova aba.</div>
+        </div>
+        <div class="tr-res" id="cfg-prom-res"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-o" onclick="closeModal('ov-cfg')">Cancelar</button>
+      <button class="btn btn-o" onclick="testAllServices()">🔌 Testar todos</button>
+      <button class="btn btn-p" onclick="saveConfig()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<button id="btn-cfg" onclick="openConfig()" title="Configurar endpoint da API">⚙</button>
+
+<!-- config.js DEVE ser carregado ANTES de app.js -->
+<script src="config.js"></script>
+<script src="app.js"></script>
+
+<style>
+/* ── Badge group ──────────────────────────────────────────────────────────── */
+.badge-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Grafana badge — laranja */
+.badge-graf {
+  color: #fbbf24 !important;
+}
+.badge-graf.ok   { color: #86efac !important; }
+.badge-graf.fail { color: #fca5a5 !important; }
+.badge-graf.busy { color: #fbbf24 !important; }
+
+/* Prometheus badge — vermelho/rosa */
+.badge-prom {
+  color: #f9a8d4 !important;
+}
+.badge-prom.ok   { color: #86efac !important; }
+.badge-prom.fail { color: #fca5a5 !important; }
+.badge-prom.busy { color: #f9a8d4 !important; }
+
+/* Cursor pointer para os badges de serviço */
+#graf-badge, #prom-badge {
+  cursor: pointer;
+}
+#graf-badge:hover, #prom-badge:hover {
+  background: rgba(255,255,255,.3);
+}
+
+/* Config modal sections */
+.cfg-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.cfg-section:last-child { margin-bottom: 0; }
+.cfg-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-bottom: 10px;
+}
+
+/* Modal mais largo para caber 3 seções */
+#ov-cfg .modal { max-width: 560px; }
+</style>
+
+<script>
+/* ── Constantes de localStorage ─────────────────────────────────────────── */
+const LS_GRAF = 'techstock_grafana_url';
+const LS_PROM = 'techstock_prometheus_url';
+
+/* ── Getters/Setters ─────────────────────────────────────────────────────── */
+function getGrafUrl() {
+  return localStorage.getItem(LS_GRAF) || '';
+}
+function getPromUrl() {
+  return localStorage.getItem(LS_PROM) || '';
+}
+function setGrafUrl(u) { localStorage.setItem(LS_GRAF, u.replace(/\/$/, '')); }
+function setPromUrl(u) { localStorage.setItem(LS_PROM, u.replace(/\/$/, '')); }
+
+/* ── Abrir serviço em nova aba ───────────────────────────────────────────── */
+function openService(svc) {
+  const url = svc === 'graf' ? getGrafUrl() : getPromUrl();
+  if (!url) {
+    openConfig();   // sem URL configurada → abre o modal de config
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/* ── Verificar saúde de um serviço ──────────────────────────────────────── */
+async function checkService(url, badgeId) {
+  const el = document.getElementById(badgeId);
+  if (!el) return;
+  if (!url) {
+    el.className   = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' fail';
+    el.textContent = '⬤ ' + (badgeId === 'graf-badge' ? 'Grafana' : 'Prometheus');
+    return;
+  }
+  el.className = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' busy';
+  try {
+    // Usa HEAD para não baixar o conteúdo completo
+    await fetch(url, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(6000),
+      mode: 'no-cors'   // Grafana/Prometheus podem não ter CORS — no-cors sempre "ok"
+    });
+    el.className   = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' ok';
+    el.textContent = '⬤ ' + (badgeId === 'graf-badge' ? 'Grafana' : 'Prometheus');
+  } catch (e) {
+    el.className   = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' fail';
+    el.textContent = '⬤ ' + (badgeId === 'graf-badge' ? 'Grafana' : 'Prometheus');
+  }
+}
+
+/* ── Testar serviço no modal (com feedback textual) ─────────────────────── */
+async function testService(svc) {
+  const isGraf = svc === 'graf';
+  const urlEl  = document.getElementById(isGraf ? 'cfg-graf-url' : 'cfg-prom-url');
+  const resEl  = document.getElementById(isGraf ? 'cfg-graf-res' : 'cfg-prom-res');
+  const url    = urlEl.value.trim().replace(/\/$/, '');
+  if (!url) { resEl.className = 'tr-res fail'; resEl.textContent = '❌ Informe a URL'; return; }
+  resEl.className   = 'tr-res busy';
+  resEl.textContent = '🔌 Testando...';
+  try {
+    await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(6000), mode: 'no-cors' });
+    resEl.className   = 'tr-res ok';
+    resEl.textContent = '✅ Acessível em ' + url;
+  } catch (e) {
+    resEl.className   = 'tr-res fail';
+    resEl.textContent = '❌ ' + e.message + ' — verifique a URL e o SG';
+  }
+}
+
+/* ── Testar todos os serviços de uma vez ──────────────────────────────────── */
+async function testAllServices() {
+  testApi();                  // já existe em app.js
+  testService('graf');
+  testService('prom');
+}
+
+/* ── Override de openConfig para preencher os novos campos ──────────────── */
+const _origOpenConfig = openConfig;
+openConfig = function() {
+  _origOpenConfig();   // chama o original (preenche cfg-url e abre o modal)
+  document.getElementById('cfg-graf-url').value         = getGrafUrl();
+  document.getElementById('cfg-graf-atual').textContent = getGrafUrl() || '(não configurado)';
+  document.getElementById('cfg-graf-res').textContent   = '';
+  document.getElementById('cfg-graf-res').className     = 'tr-res';
+  document.getElementById('cfg-prom-url').value         = getPromUrl();
+  document.getElementById('cfg-prom-atual').textContent = getPromUrl() || '(não configurado)';
+  document.getElementById('cfg-prom-res').textContent   = '';
+  document.getElementById('cfg-prom-res').className     = 'tr-res';
+};
+
+/* ── Override de saveConfig para salvar os novos campos ─────────────────── */
+const _origSaveConfig = saveConfig;
+saveConfig = function() {
+  const grafUrl = document.getElementById('cfg-graf-url').value.trim().replace(/\/$/, '');
+  const promUrl = document.getElementById('cfg-prom-url').value.trim().replace(/\/$/, '');
+  if (grafUrl) setGrafUrl(grafUrl);
+  if (promUrl) setPromUrl(promUrl);
+  _origSaveConfig();   // salva a API URL e recarrega a página
+};
+
+/* ── Verifica saúde de Grafana e Prometheus no carregamento ─────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  // Pequeno delay para não competir com o checkApi() do app.js
+  setTimeout(() => {
+    checkService(getGrafUrl(), 'graf-badge');
+    checkService(getPromUrl(), 'prom-badge');
+  }, 800);
+
+  // Re-verifica a cada 60 segundos
+  setInterval(() => {
+    checkService(getGrafUrl(), 'graf-badge');
+    checkService(getPromUrl(), 'prom-badge');
+  }, 60000);
+});
+</script>
+</body>
+</html>

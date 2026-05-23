@@ -1,0 +1,319 @@
+{
+  "dashboard": {
+    "uid": "techstock-rds",
+    "title": "TechStock \u2014 Banco de Dados (RDS + App)",
+    "tags": [
+      "techstock",
+      "rds",
+      "postgres"
+    ],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "text",
+        "title": "",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 24,
+          "h": 2
+        },
+        "options": {
+          "mode": "markdown",
+          "content": "## \ud83d\uddc4\ufe0f Banco de Dados PostgreSQL \u2014 RDS\nM\u00e9tricas do pool de conex\u00f5es via **prom-client** no backend. M\u00e9tricas nativas do RDS via **CloudWatch** (configurar datasource CloudWatch para dados completos)."
+        }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "Pool: Conex\u00f5es Ativas",
+        "description": "Handles ativos incluem conex\u00f5es PostgreSQL abertas",
+        "gridPos": {
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "techstock_nodejs_active_handles{instance=\"backend-app\"}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 3,
+        "type": "timeseries",
+        "title": "Requisi\u00e7\u00f5es DB \u2014 Taxa Sucesso",
+        "description": "Taxa de respostas 200 em rotas de API = queries bem-sucedidas",
+        "gridPos": {
+          "x": 6,
+          "y": 2,
+          "w": 12,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(techstock_http_requests_total{status=\"200\",path=~\"/api/.*\"}[5m])",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "type": "stat",
+        "title": "Erros de DB (500s em /api)",
+        "description": "",
+        "gridPos": {
+          "x": 18,
+          "y": 2,
+          "w": 6,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(techstock_http_requests_total{status=\"500\",path=~\"/api/.*\"}[5m])",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 0.01
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 5,
+        "type": "timeseries",
+        "title": "Opera\u00e7\u00f5es por Rota DB",
+        "description": "Volume de opera\u00e7\u00f5es por rota: categorias, produtos, movimentos, stats",
+        "gridPos": {
+          "x": 0,
+          "y": 6,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "sum by(path,method) (rate(techstock_http_requests_total{path=~\"/api/.*\",status=~\"2..\"}[5m]))",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 6,
+        "type": "timeseries",
+        "title": "Timeout Conex\u00e3o DB (erros 503)",
+        "description": "HTTP 503 = backend retornou erro de banco (pool esgotado, timeout, SSL)",
+        "gridPos": {
+          "x": 12,
+          "y": 6,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(techstock_http_requests_total{status=\"503\"}[5m])",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "type": "timeseries",
+        "title": "Throughput Total (req/min)",
+        "description": "Requisi\u00e7\u00f5es por minuto \u2014 reflete a carga no banco de dados",
+        "gridPos": {
+          "x": 0,
+          "y": 14,
+          "w": 24,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(techstock_http_requests_total[1m])) * 60",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      }
+    ]
+  },
+  "overwrite": true,
+  "folderId": 0
+}

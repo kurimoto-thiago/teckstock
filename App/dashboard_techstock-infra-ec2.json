@@ -1,0 +1,637 @@
+{
+  "dashboard": {
+    "uid": "techstock-infra-ec2",
+    "title": "TechStock \u2014 Infraestrutura EC2",
+    "tags": [
+      "techstock",
+      "ec2",
+      "infra"
+    ],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "text",
+        "title": "",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 24,
+          "h": 2
+        },
+        "options": {
+          "mode": "markdown",
+          "content": "## \ud83d\udda5\ufe0f Infraestrutura EC2 \u2014 Backend e Monitoring\nM\u00e9tricas do sistema operacional coletadas via **node_exporter** (porta 9100)."
+        }
+      },
+      {
+        "id": 2,
+        "type": "gauge",
+        "title": "CPU Backend (%)",
+        "description": "",
+        "gridPos": {
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 5
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "round(100 - (avg(rate(node_cpu_seconds_total{job=\"node-exporter-backend\",mode=\"idle\"}[1m])) * 100), 0.1)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 70
+                },
+                {
+                  "color": "red",
+                  "value": 90
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 3,
+        "type": "gauge",
+        "title": "RAM Backend Livre (GB)",
+        "description": "",
+        "gridPos": {
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 5
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "node_memory_MemAvailable_bytes{job=\"node-exporter-backend\"} / 1073741824",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "gbytes",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 0.5
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 4,
+        "type": "gauge",
+        "title": "CPU Monitoring (%)",
+        "description": "",
+        "gridPos": {
+          "x": 12,
+          "y": 2,
+          "w": 6,
+          "h": 5
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "round(100 - (avg(rate(node_cpu_seconds_total{job=\"node-exporter-monitoring\",mode=\"idle\"}[1m])) * 100), 0.1)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 70
+                },
+                {
+                  "color": "red",
+                  "value": 90
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 5,
+        "type": "gauge",
+        "title": "RAM Monitoring Livre (GB)",
+        "description": "",
+        "gridPos": {
+          "x": 18,
+          "y": 2,
+          "w": 6,
+          "h": 5
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "node_memory_MemAvailable_bytes{job=\"node-exporter-monitoring\"} / 1073741824",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "gbytes",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 0.5
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 6,
+        "type": "timeseries",
+        "title": "CPU por Inst\u00e2ncia (hist\u00f3rico)",
+        "description": "",
+        "gridPos": {
+          "x": 0,
+          "y": 7,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "round(100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100), 0.1)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "type": "timeseries",
+        "title": "RAM Total vs Dispon\u00edvel",
+        "description": "",
+        "gridPos": {
+          "x": 12,
+          "y": 7,
+          "w": 12,
+          "h": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "node_memory_MemTotal_bytes / 1073741824",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "gbytes",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 8,
+        "type": "gauge",
+        "title": "Disco Usado Backend (%)",
+        "description": "",
+        "gridPos": {
+          "x": 0,
+          "y": 15,
+          "w": 6,
+          "h": 5
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "round((1 - node_filesystem_free_bytes{job=\"node-exporter-backend\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"node-exporter-backend\",mountpoint=\"/\"}) * 100, 0.1)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 70
+                },
+                {
+                  "color": "red",
+                  "value": 85
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 9,
+        "type": "gauge",
+        "title": "Disco Usado Monitoring (%)",
+        "description": "",
+        "gridPos": {
+          "x": 6,
+          "y": 15,
+          "w": 6,
+          "h": 5
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "round((1 - node_filesystem_free_bytes{job=\"node-exporter-monitoring\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"node-exporter-monitoring\",mountpoint=\"/\"}) * 100, 0.1)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 70
+                },
+                {
+                  "color": "red",
+                  "value": 85
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 10,
+        "type": "timeseries",
+        "title": "Rede \u2014 Bytes Recebidos/s",
+        "description": "",
+        "gridPos": {
+          "x": 12,
+          "y": 15,
+          "w": 12,
+          "h": 5
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "rate(node_network_receive_bytes_total{device!=\"lo\"}[5m])",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "Bps",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      },
+      {
+        "id": 11,
+        "type": "stat",
+        "title": "Uptime Backend",
+        "description": "",
+        "gridPos": {
+          "x": 0,
+          "y": 20,
+          "w": 8,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "time() - node_boot_time_seconds{job=\"node-exporter-backend\"}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 12,
+        "type": "timeseries",
+        "title": "Load Average (1m) Backend",
+        "description": "",
+        "gridPos": {
+          "x": 8,
+          "y": 20,
+          "w": 16,
+          "h": 4
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-techstock"
+        },
+        "targets": [
+          {
+            "expr": "node_load1{job=\"node-exporter-backend\"}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus-techstock"
+            },
+            "legendFormat": ""
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list"
+          }
+        }
+      }
+    ]
+  },
+  "overwrite": true,
+  "folderId": 0
+}
