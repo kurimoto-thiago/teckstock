@@ -214,7 +214,7 @@ DB_SSL=${DB_SSL}
 PORT=3000
 NODE_ENV=production
 CORS_ORIGIN=${CORS_ORIGIN}
-AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "us-east-1")
+AWS_REGION=${REGION}
 ENV
 
 # Permissões antes do chown geral
