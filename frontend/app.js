@@ -39,30 +39,30 @@ const _prodCache = new Map();
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODAIS
-// Centralizado aqui — ov-prod NUNCA fecha ao clicar fora
+// FIX: ov-prod, ov-cfg e ov-hist não fecham ao clicar fora
 // ══════════════════════════════════════════════════════════════════════════════
+const MODAL_NO_OUTSIDE_CLOSE = new Set(['ov-prod', 'ov-cfg', 'ov-hist', 'ov-mov-novo']);
+
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 function initModais() {
   document.querySelectorAll('.ov').forEach(overlay => {
-    // Modal de produto: não fecha ao clicar fora
-    if (overlay.id === 'ov-prod') return;
+    if (MODAL_NO_OUTSIDE_CLOSE.has(overlay.id)) return;
     overlay.addEventListener('click', function(e) {
       if (e.target === overlay) overlay.classList.remove('open');
     });
   });
-  // Esc fecha todos exceto ov-prod
   document.addEventListener('keydown', function(e) {
     if (e.key !== 'Escape') return;
     document.querySelectorAll('.ov.open').forEach(o => {
-      if (o.id !== 'ov-prod') o.classList.remove('open');
+      if (!MODAL_NO_OUTSIDE_CLOSE.has(o.id)) o.classList.remove('open');
     });
   });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// INIT — tudo começa aqui
+// INIT
 // ══════════════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   initModais();
@@ -94,16 +94,19 @@ async function checkApi() {
 // ══════════════════════════════════════════════════════════════════════════════
 // NAVEGAÇÃO
 // ══════════════════════════════════════════════════════════════════════════════
-const pages = ['dashboard', 'produtos', 'alertas'];
+const pages = ['dashboard', 'produtos', 'movimentacoes', 'alertas'];
 
 function showPage(name) {
   pages.forEach((p, i) => {
-    document.getElementById('page-' + p).classList.toggle('active', p === name);
-    document.querySelectorAll('.nav-btn')[i].classList.toggle('active', p === name);
+    const pg  = document.getElementById('page-' + p);
+    const btn = document.querySelectorAll('.nav-btn')[i];
+    if (pg)  pg.classList.toggle('active', p === name);
+    if (btn) btn.classList.toggle('active', p === name);
   });
-  if (name === 'dashboard') loadDash();
-  if (name === 'produtos')  loadProd();
-  if (name === 'alertas')   loadAlert();
+  if (name === 'dashboard')     loadDash();
+  if (name === 'produtos')      loadProd();
+  if (name === 'movimentacoes') loadMovPage();
+  if (name === 'alertas')       loadAlert();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -153,9 +156,10 @@ async function loadDash() {
 async function loadCats() {
   try {
     cats = await api('/api/categorias');
-    ['p-cat', 'f-cat'].forEach(id => {
+    ['p-cat', 'f-cat', 'mn-cat'].forEach(id => {
       const s = document.getElementById(id);
-      const base = id === 'f-cat'
+      if (!s) return;
+      const base = id === 'f-cat' || id === 'mn-cat'
         ? '<option value="">Todas categorias</option>'
         : '<option value="">Sem categoria</option>';
       s.innerHTML = base + cats.map(c =>
@@ -197,10 +201,10 @@ async function loadProd() {
       <td>${qBar(p.quantidade, p.qtd_minima)}</td>
       <td>R$ ${Number(p.preco_custo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-g" data-id="${p.id}" onclick="openMovById(this)">↕</button>
-        <button class="btn btn-sm btn-o" data-id="${p.id}" onclick="openHistById(this)">📋</button>
-        <button class="btn btn-sm btn-o" data-id="${p.id}" onclick="openEditById(this)">✏️</button>
-        <button class="btn btn-sm btn-r" data-id="${p.id}" data-nome="${esc(p.nome)}" onclick="delProdById(this)">🗑</button>
+        <button class="btn btn-sm btn-g" data-id="${p.id}" onclick="openMovById(this)" title="Movimentar">↕</button>
+        <button class="btn btn-sm btn-o" data-id="${p.id}" onclick="openHistById(this)" title="Histórico">📋</button>
+        <button class="btn btn-sm btn-o" data-id="${p.id}" onclick="openEditById(this)" title="Editar">✏️</button>
+        <button class="btn btn-sm btn-r" data-id="${p.id}" data-nome="${esc(p.nome)}" onclick="delProdById(this)" title="Inativar">🗑</button>
       </div></td>
     </tr>`).join('');
   } catch (e) {
@@ -231,11 +235,147 @@ async function loadAlert() {
       <td>${catBadge(p.categoria_nome, p.categoria_cor)}</td>
       <td>${esc(p.localizacao || '—')}</td>
       <td>${qBar(p.quantidade, p.qtd_minima)}</td>
-      <td><button class="btn btn-sm btn-g" data-id="${p.id}" data-nome="${esc(p.nome)}" onclick="openMovById(this)">📥 Entrada</button></td>
+      <td><button class="btn btn-sm btn-g" data-id="${p.id}" data-nome="${esc(p.nome)}" onclick="openMovById(this)">📥 Repor</button></td>
     </tr>`).join('');
   } catch (e) {
     tb.innerHTML = errRow(6, e.message);
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MOVIMENTAÇÕES — PÁGINA DEDICADA
+// ══════════════════════════════════════════════════════════════════════════════
+let _movFiltro = { tipo: '', produto: '', cat: '' };
+
+async function loadMovPage() {
+  // Popula select de produtos
+  await _loadMovProdSelect();
+  await _fetchMovs();
+}
+
+async function _loadMovProdSelect() {
+  const sel = document.getElementById('mn-prod');
+  if (!sel || sel.dataset.loaded) return;
+  try {
+    const prods = await api('/api/produtos');
+    sel.innerHTML = '<option value="">Todos os produtos</option>' +
+      prods.map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('');
+    sel.dataset.loaded = '1';
+  } catch { /* silencioso */ }
+}
+
+async function _fetchMovs() {
+  const tb = document.getElementById('mov-tb');
+  if (!tb) return;
+  tb.innerHTML = loadRow(7);
+
+  const tipo   = document.getElementById('mn-tipo')?.value || '';
+  const prodId = document.getElementById('mn-prod')?.value || '';
+
+  const icons  = { entrada: '📥', saida: '📤', ajuste: '⚖️' };
+  const tipoCls = { entrada: 'b-ok', saida: 'b-bad', ajuste: 'b-warn' };
+
+  function renderRows(rows) {
+    if (tipo) rows = rows.filter(m => m.tipo === tipo);
+    rows.sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
+    document.getElementById('mov-count').textContent = `${rows.length} registro(s)`;
+    if (!rows.length) {
+      tb.innerHTML = '<tr class="empty"><td colspan="7">Nenhum movimento encontrado.</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(m => {
+      const delta = m.tipo === 'entrada' ? `+${m.quantidade}`
+                  : m.tipo === 'saida'   ? `-${m.quantidade}`
+                  :                        `→${m.quantidade_nova ?? m.quantidade}`;
+      const cls = m.tipo === 'entrada' ? 'pos' : m.tipo === 'saida' ? 'neg' : '';
+      const dt  = new Date(m.criado_em).toLocaleString('pt-BR');
+      // nome do produto: tenta campo da API, depois busca no cache
+      const pNome = m.produto_nome
+        || (_prodCache.get(Number(m.produto_id))?.nome)
+        || String(m.produto_id || '—');
+      return `<tr>
+        <td>${dt}</td>
+        <td><span class="badge ${tipoCls[m.tipo]}">${icons[m.tipo]} ${m.tipo.toUpperCase()}</span></td>
+        <td><strong>${esc(pNome)}</strong></td>
+        <td style="text-align:center">${m.quantidade_anterior ?? '—'}</td>
+        <td style="text-align:center;font-weight:700" class="${cls}">${delta}</td>
+        <td style="text-align:center">${m.quantidade_nova ?? '—'}</td>
+        <td style="color:var(--muted);font-size:12px">${esc(m.motivo || '—')} · ${esc(m.responsavel || '—')}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  try {
+    if (prodId) {
+      // Produto selecionado — rota direta
+      const rows = await api(`/api/movimentos/${prodId}`);
+      renderRows(rows);
+    } else {
+      // Sem filtro — busca movimentos de todos os produtos em paralelo
+      // Garante que o cache de produtos está populado
+      if (!_prodCache.size) {
+        const prods = await api('/api/produtos');
+        prods.forEach(p => _prodCache.set(p.id, p));
+      }
+      const ids = [..._prodCache.keys()];
+      const results = await Promise.all(
+        ids.map(id => api(`/api/movimentos/${id}`).catch(() => []))
+      );
+      renderRows(results.flat());
+    }
+  } catch (e) {
+    tb.innerHTML = errRow(7, e.message);
+  }
+}
+
+function abrirNovaMovimentacao() {
+  // Abre modal de movimentação sem produto pré-selecionado
+  // Para usar a partir da página de movimentações
+  document.getElementById('mn-mov-pid').value          = '';
+  document.getElementById('mn-mov-psel').value         = '';
+  document.getElementById('mn-mov-tipo').value         = 'saida';
+  document.getElementById('mn-mov-qty').value          = 1;
+  document.getElementById('mn-mov-motivo').value       = '';
+  document.getElementById('mn-mov-resp').value         = 'web';
+  document.getElementById('mn-mov-pnome').textContent  = '';
+  openModal('ov-mov-novo');
+}
+
+async function onMovProdSelect() {
+  const sel  = document.getElementById('mn-mov-psel');
+  const id   = sel.value;
+  const nome = sel.options[sel.selectedIndex]?.text || '';
+  document.getElementById('mn-mov-pid').value         = id;
+  document.getElementById('mn-mov-pnome').textContent = nome ? `Produto: ${nome}` : '';
+}
+
+async function saveMovNovo() {
+  const prodId = document.getElementById('mn-mov-pid').value;
+  if (!prodId) {
+    alert('Selecione um produto.');
+    return;
+  }
+  const qtd = Number(document.getElementById('mn-mov-qty').value);
+  if (!qtd || qtd <= 0 || !Number.isInteger(qtd)) {
+    alert('Quantidade deve ser um número inteiro maior que zero.');
+    document.getElementById('mn-mov-qty').focus();
+    return;
+  }
+  const body = {
+    produto_id:  Number(prodId),
+    tipo:        document.getElementById('mn-mov-tipo').value,
+    quantidade:  qtd,
+    motivo:      document.getElementById('mn-mov-motivo').value.trim(),
+    responsavel: document.getElementById('mn-mov-resp').value.trim() || 'web',
+  };
+  try {
+    await api('/api/movimentos', { method: 'POST', body: JSON.stringify(body) });
+    closeModal('ov-mov-novo');
+    // Invalida cache de produtos para forçar reload com nova qtd
+    document.getElementById('mn-prod').dataset.loaded = '';
+    await loadMovPage();
+    loadDash();
+  } catch (e) { alert('Erro: ' + e.message); }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -262,7 +402,6 @@ async function gerarCodigo(categoriaId) {
   const el = document.getElementById('p-cod');
   if (!el) return;
 
-  // Calcula prefixo ANTES de mostrar loading
   let prefix = 'PR';
   try {
     if (!cats.length) await loadCats();
@@ -270,15 +409,11 @@ async function gerarCodigo(categoriaId) {
     prefix = catToPrefix(cat ? cat.nome : '');
   } catch { /* usa PR */ }
 
-  // Mostra loading com prefixo visível
   el.value = `${prefix}-…`;
 
-  // Busca próximo número
   try {
     const produtos = await api(
-      categoriaId
-        ? `/api/produtos?categoria_id=${categoriaId}`
-        : '/api/produtos'
+      categoriaId ? `/api/produtos?categoria_id=${categoriaId}` : '/api/produtos'
     );
     const re = new RegExp(`^${prefix}-(\\d+)$`);
     const nums = produtos
@@ -318,9 +453,15 @@ async function openNovo() {
   document.getElementById('p-custo').value = 0;
   document.getElementById('p-un').value    = 'un';
   document.getElementById('p-cat').value   = '';
-  setCodReadonly(document.getElementById('p-cod'));
 
-  // Abre modal imediatamente — geração de código em paralelo
+  // Hint: qty é editável apenas em novo produto
+  const qtyEl = document.getElementById('p-qty');
+  qtyEl.readOnly = false;
+  qtyEl.style.cssText = '';
+  const hint = document.getElementById('p-qty-hint');
+  if (hint) hint.textContent = '';
+
+  setCodReadonly(document.getElementById('p-cod'));
   openModal('ov-prod');
   gerarCodigo('');
 }
@@ -336,6 +477,17 @@ function openEdit(p) {
   document.getElementById('p-custo').value = p.preco_custo;
   document.getElementById('p-un').value    = p.unidade || 'un';
   document.getElementById('p-cat').value   = p.categoria_id || '';
+
+  // FIX: em edição, quantidade é somente leitura
+  // Para alterar estoque use o botão ↕ Movimentar
+  const qtyEl = document.getElementById('p-qty');
+  qtyEl.readOnly = true;
+  qtyEl.style.cssText =
+    'width:100%;background:#F1F5F9;color:#64748B;cursor:default;' +
+    'border:1px solid #E2E8F0;border-radius:8px;padding:8px 12px;font-size:14px;';
+  const hint = document.getElementById('p-qty-hint');
+  if (hint) hint.innerHTML =
+    `<span style="font-size:11px;color:var(--muted)">Use o botão ↕ para movimentar estoque</span>`;
 
   const cod = document.getElementById('p-cod');
   cod.value = p.codigo;
@@ -354,14 +506,10 @@ async function saveProd() {
   }
 
   let codigo = document.getElementById('p-cod').value.trim();
-
-  // Se ainda em loading, regera
   if (!codigo || codigo.includes('…')) {
     await gerarCodigo(document.getElementById('p-cat').value);
     codigo = document.getElementById('p-cod').value.trim();
   }
-
-  // Fallback absoluto — nunca bloqueia o save
   if (!codigo || codigo.includes('…')) {
     const cat = cats.find(c => String(c.id) === String(document.getElementById('p-cat').value));
     codigo = `${catToPrefix(cat ? cat.nome : '')}-${Date.now().toString().slice(-3)}`;
@@ -401,13 +549,13 @@ async function delProd(id, nome) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MOVIMENTAÇÃO
+// MOVIMENTAÇÃO (modal rápido — acessado via botão ↕ na tabela de produtos)
 // ══════════════════════════════════════════════════════════════════════════════
 function openMov(id, nome) {
   document.getElementById('m-pid').value         = id;
   document.getElementById('m-pnome').textContent = nome;
   document.getElementById('m-qty').value         = 1;
-  document.getElementById('m-tipo').value        = 'entrada';
+  document.getElementById('m-tipo').value        = 'saida';
   document.getElementById('m-motivo').value      = '';
   document.getElementById('m-resp').value        = 'web';
   openModal('ov-mov');
@@ -432,7 +580,8 @@ async function saveMov() {
     closeModal('ov-mov');
     loadProd();
     loadDash();
-    if (document.getElementById('page-alertas').classList.contains('active')) loadAlert();
+    if (document.getElementById('page-alertas').classList.contains('active'))       loadAlert();
+    if (document.getElementById('page-movimentacoes').classList.contains('active')) loadMovPage();
   } catch (e) { alert('Erro: ' + e.message); }
 }
 
@@ -492,7 +641,7 @@ async function testApi() {
     const d = await r.json();
     el.className   = 'tr-res ok';
     el.textContent = d.ok
-      ? `✅ OK · DB: ${d.db?.ts ? new Date(d.db.ts).toLocaleTimeString('pt-BR') : '?'} · CORS: ${d.cors_origin} · Host: ${d.hostname}`
+      ? `✅ OK · DB: ${d.db?.ts ? new Date(d.db.ts).toLocaleTimeString('pt-BR') : '?'} · Host: ${d.hostname}`
       : '⚠️ API respondeu com erro';
   } catch (e) {
     el.className   = 'tr-res fail';

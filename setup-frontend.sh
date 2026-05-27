@@ -1,31 +1,18 @@
 #!/bin/bash
 # =============================================================================
-# setup-frontend-ec2.sh — Configuração do EC2 Frontend (Nginx)
-# TechStock | Execução interativa linha a linha via SSM Session Manager ou SSH
-#
-# COMO USAR:
-#   1. Conecte na instância via Session Manager ou SSH
-#   2. Execute: sudo bash setup-frontend-ec2.sh
-#   OU copie e cole cada seção no terminal manualmente
-#
-# PRÉ-REQUISITO: preencha as variáveis da SEÇÃO 1 antes de rodar
+# setup-frontend.sh — Configuração do EC2 Frontend TechStock
+# Nginx :80 | config.js dinâmico | Node Exporter | CloudWatch Agent
+# Execução via SSM Session Manager
 # =============================================================================
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 1 — VARIÁVEIS (edite aqui antes de executar)
+# SEÇÃO 1 — VARIÁVEIS FIXAS (não alterar)
 # ══════════════════════════════════════════════════════════════════════════════
-
-ALB_DNS="COLE_O_DNS_DO_ALB_AQUI"
-# Exemplo: techstock-alb-123456789.us-east-1.elb.amazonaws.com
-# Sem http:// — o script adiciona automaticamente
-
-S3_BUCKET=""
-# Se os arquivos frontend estão em um bucket S3, informe o nome
-# Exemplo: techstock-frontend-123456789
-# Se vazio, o script solicita upload manual
+NODE_EXPORTER_VERSION="1.7.0"
+WEBROOT="/usr/share/nginx/html/techstock"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 2 — Valida variáveis
+# SEÇÃO 2 — ENTRADA INTERATIVA DE DADOS
 # ══════════════════════════════════════════════════════════════════════════════
 
 echo ""
@@ -35,39 +22,66 @@ echo " $(date)"
 echo "============================================"
 echo ""
 
-if [[ "$ALB_DNS" == "COLE_O_DNS_DO_ALB_AQUI" ]]; then
-  echo "ERRO: edite ALB_DNS na SEÇÃO 1 antes de continuar."
-  exit 1
-fi
-
-# Remove http:// se o usuário colou com prefixo
-ALB_DNS="${ALB_DNS#http://}"
-ALB_DNS="${ALB_DNS#https://}"
-ALB_DNS="${ALB_DNS%/}"
-
-echo "Configurações:"
-echo "  ALB_DNS   = $ALB_DNS"
-echo "  API URL   = http://$ALB_DNS"
-echo "  S3_BUCKET = ${S3_BUCKET:-'(não definido — upload manual)'}"
+# ALB DNS — obrigatório
+while true; do
+  echo "DNS do ALB (sem http://):"
+  echo "  Exemplo: techstock-alb-105375070.us-east-1.elb.amazonaws.com"
+  echo "  Console AWS → EC2 → Load Balancers → DNS name"
+  read -p "  → " ALB_INPUT
+  ALB_INPUT="${ALB_INPUT// /}"
+  ALB_INPUT="${ALB_INPUT#http://}"
+  ALB_INPUT="${ALB_INPUT#https://}"
+  ALB_INPUT="${ALB_INPUT%/}"
+  [[ -n "$ALB_INPUT" ]] && break
+  echo "  ✗ Obrigatório. Tente novamente."
+  echo ""
+done
+ALB_DNS="$ALB_INPUT"
+echo "  ✓ ALB_DNS: $ALB_DNS"
+echo "  ✓ API_URL: http://$ALB_DNS"
 echo ""
-read -p "Confirma? (s/N): " CONFIRM
+
+# S3 Bucket — opcional
+echo "Bucket S3 com os arquivos do frontend (Enter para pular — upload manual):"
+echo "  Exemplo: techstock-060440628950/frontend"
+echo "  Sem s3:// — só o bucket/prefixo"
+read -p "  → " S3_INPUT
+S3_INPUT="${S3_INPUT// /}"
+S3_INPUT="${S3_INPUT#s3://}"
+if [[ -n "$S3_INPUT" ]]; then
+  S3_BUCKET="s3://${S3_INPUT}"
+  echo "  ✓ S3_BUCKET: $S3_BUCKET"
+else
+  S3_BUCKET=""
+  echo "  ⚠ Pulado — faça upload manual dos arquivos"
+fi
+echo ""
+
+# Confirmação
+echo "--------------------------------------------"
+echo " Resumo da configuração:"
+echo "   ALB_DNS   = $ALB_DNS"
+echo "   API_URL   = http://$ALB_DNS"
+echo "   S3_BUCKET = ${S3_BUCKET:-'(upload manual)'}"
+echo "   WEBROOT   = $WEBROOT"
+echo "--------------------------------------------"
+echo ""
+read -p "Confirma e inicia a instalação? (s/N): " CONFIRM
 [[ "$CONFIRM" =~ ^[Ss]$ ]] || { echo "Cancelado."; exit 0; }
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 3 — Instalação do Nginx
+# CORREÇÃO: nginx.conf substituído para remover server block default do AL2023
+# que conflitava com a configuração customizada
 # ══════════════════════════════════════════════════════════════════════════════
-
 echo ""
 echo "--- [1/6] Atualizando sistema e instalando Nginx ---"
 dnf update -y
-dnf install -y nginx wget curl
-echo "Nginx versão: $(nginx -v 2>&1)"
+dnf install -y nginx wget
+echo "Nginx: $(nginx -v 2>&1)"
 
-# Remove o server block default do nginx.conf do Amazon Linux 2023
-# AL2023 embute um server {} em /etc/nginx/nginx.conf que conflita com
-# nosso conf.d/techstock.conf (dois listen 80 default_server = erro)
-# Substituímos o nginx.conf por uma versão mínima sem server block embutido
-sudo tee /etc/nginx/nginx.conf > /dev/null << 'NGINXMAIN'
+# Substitui nginx.conf padrão — bloco server default do AL2023 conflita
+cat > /etc/nginx/nginx.conf << 'NGXMAIN'
 user nginx;
 worker_processes auto;
 error_log /var/log/nginx/error.log notice;
@@ -83,201 +97,170 @@ http {
                     '$status $body_bytes_sent "$http_referer" '
                     '"$http_user_agent" "$http_x_forwarded_for"';
     access_log /var/log/nginx/access.log main;
-    sendfile on;
-    tcp_nopush on;
-    keepalive_timeout 65;
+    sendfile            on;
+    tcp_nopush          on;
+    keepalive_timeout   65;
     types_hash_max_size 4096;
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    include /etc/nginx/conf.d/*.conf;
+    include             /etc/nginx/mime.types;
+    default_type        application/octet-stream;
+    include             /etc/nginx/conf.d/*.conf;
 }
-NGINXMAIN
-echo "nginx.conf simplificado (sem server block embutido): OK"
+NGXMAIN
+echo "nginx.conf: OK (server block default removido)"
 
-
-# ── IMPORTANTE: ao fazer upload para S3, use Cache-Control no config.js ────────
-# aws s3 cp config.js s3://$S3_BUCKET/config.js \
-#   --cache-control "no-store, no-cache" \
-#   --content-type "application/javascript"
-# Sem isso, o browser cacheia por 24h e ignora atualizações do DNS do ALB
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 4 — Diretório do frontend
+# SEÇÃO 4 — Diretório e arquivos
+# CORREÇÃO: chown/chmod aplicados imediatamente após criação
 # ══════════════════════════════════════════════════════════════════════════════
-
 echo ""
 echo "--- [2/6] Criando diretório do frontend ---"
-mkdir -p /usr/share/nginx/html/techstock
-ls -la /usr/share/nginx/html/
+mkdir -p $WEBROOT
+chown -R nginx:nginx $WEBROOT
+chmod -R 755 $WEBROOT
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 5 — Copia arquivos do frontend
+# SEÇÃO 5 — Copia arquivos
 # ══════════════════════════════════════════════════════════════════════════════
-
 echo ""
 echo "--- [3/6] Copiando arquivos do frontend ---"
 
 if [[ -n "$S3_BUCKET" ]]; then
-  echo "Copiando do S3: s3://$S3_BUCKET/"
-  aws s3 sync s3://$S3_BUCKET/ /usr/share/nginx/html/techstock/
-  # config.js sem cache (URL do ALB pode mudar)
-  aws s3 cp s3://$S3_BUCKET/config.js /usr/share/nginx/html/techstock/config.js \
-    --cache-control "no-store, no-cache" 2>/dev/null || true
-  chown -R nginx:nginx /usr/share/nginx/html/techstock/
-  chmod -R 755 /usr/share/nginx/html/techstock/
-  echo "Arquivos copiados:"
-  ls -la /usr/share/nginx/html/techstock/
+  echo "Copiando do S3: $S3_BUCKET"
+  aws s3 sync $S3_BUCKET $WEBROOT/ \
+    && echo "Sincronização S3: OK" \
+    || echo "AVISO: erro no sync S3 — verifique permissões do LabRole"
+  chown -R nginx:nginx $WEBROOT/
+  chmod -R 755 $WEBROOT/
 else
-  echo "S3_BUCKET não definido."
   echo ""
-  echo "Opções para copiar os arquivos:"
-  echo "  a) scp da sua máquina local:"
-  echo "       scp -i vockey.pem frontend/* ec2-user@IP_PUBLICO:/tmp/"
-  echo "       sudo cp /tmp/{index.html,style.css,app.js,config.js} /usr/share/nginx/html/techstock/"
+  echo "Copie os arquivos manualmente para $WEBROOT/:"
   echo ""
-  echo "  b) Wget de URL pública (se disponível):"
-  echo "       wget -P /usr/share/nginx/html/techstock/ http://URL/index.html"
-  echo "       wget -P /usr/share/nginx/html/techstock/ http://URL/style.css"
-  echo "       wget -P /usr/share/nginx/html/techstock/ http://URL/app.js"
-  echo "       wget -P /usr/share/nginx/html/techstock/ http://URL/config.js"
+  echo "  Opção A — scp da sua máquina local:"
+  echo "    scp -i vockey.pem index.html style.css app.js config.js ec2-user@IP:/tmp/"
+  echo "    sudo cp /tmp/{index.html,style.css,app.js,config.js} $WEBROOT/"
   echo ""
-  echo "  c) Cole o conteúdo manualmente:"
-  echo "       cat > /usr/share/nginx/html/techstock/index.html"
-  echo "       (cole o conteúdo e pressione Ctrl+D)"
+  echo "  Opção B — wget de URL pública:"
+  echo "    for f in index.html style.css app.js config.js; do"
+  echo "      wget -O $WEBROOT/\$f http://URL/\$f"
+  echo "    done"
   echo ""
-  echo "Após copiar os arquivos, pressione Enter para continuar..."
+  echo "Pressione Enter após copiar os arquivos..."
   read -p ""
+  chown -R nginx:nginx $WEBROOT/
+  chmod -R 755 $WEBROOT/
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 6 — Gera config.js com URL do ALB
+# CRÍTICO: config.js contém a URL do ALB — deve ser gerado/atualizado aqui
+# Se o S3 sobrescreveu com um config.js antigo, este bloco corrige
 # ══════════════════════════════════════════════════════════════════════════════
-
 echo ""
-echo "--- [4/6] Configurando config.js com URL do ALB ---"
+echo "--- [4/6] Configurando config.js ---"
 
-cat > /usr/share/nginx/html/techstock/config.js << CFG
-// config.js — gerado automaticamente pelo setup-frontend-ec2.sh
+cat > $WEBROOT/config.js << CFG
+// config.js — gerado pelo setup-frontend.sh em $(date)
+// NÃO edite manualmente — execute o script novamente para atualizar
 window.TECHSTOCK_CONFIG = {
   apiUrl: 'http://${ALB_DNS}'
 };
 CFG
 
-echo "config.js gerado:"
-cat /usr/share/nginx/html/techstock/config.js
+chown nginx:nginx $WEBROOT/config.js
+chmod 644 $WEBROOT/config.js
 
-# Verifica se os arquivos essenciais existem
+echo "config.js gerado:"
+cat $WEBROOT/config.js
+
 echo ""
 echo "Verificando arquivos:"
 for f in index.html style.css app.js config.js; do
-  if [[ -f /usr/share/nginx/html/techstock/$f ]]; then
-    echo "  ✓ $f"
+  if [[ -f $WEBROOT/$f ]]; then
+    echo "  ✓ $f ($(stat -c%s $WEBROOT/$f) bytes)"
   else
-    echo "  ✗ $f  ← FALTANDO"
+    echo "  ✗ $f ← FALTANDO"
   fi
 done
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 7 — Configuração do Nginx
 # ══════════════════════════════════════════════════════════════════════════════
-
 echo ""
 echo "--- [5/6] Configurando Nginx ---"
+
 cat > /etc/nginx/conf.d/techstock.conf << 'NGINX'
 server {
     listen 80 default_server;
     server_name _;
-
     root  /usr/share/nginx/html/techstock;
     index index.html;
 
-    # config.js: SEM cache — contém a URL do ALB que pode mudar
-    # Se o ALB DNS mudar e o browser tiver cacheado, o frontend ficará quebrado
+    # config.js: SEM cache — contém URL do ALB que pode mudar
     location = /config.js {
         add_header Cache-Control "no-store, no-cache, must-revalidate";
         add_header Pragma "no-cache";
         expires -1;
     }
 
-    # Arquivos estáticos com SPA fallback
+    # SPA fallback
     location / {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-cache";
         add_header X-Frame-Options "SAMEORIGIN";
     }
 
-    # Cache para CSS e JS (exceto config.js, tratado acima)
+    # CSS/JS com cache curto
     location ~* \.(css|js)$ {
         expires 1h;
         add_header Cache-Control "public, max-age=3600";
     }
 
-    # Health check do ALB — responde antes de verificar os arquivos
+    # Health check para o ALB
     location = /health {
         default_type application/json;
         return 200 '{"ok":true,"service":"frontend-nginx"}';
         add_header Content-Type application/json;
     }
 
-    # Logs
     access_log /var/log/nginx/techstock-access.log;
     error_log  /var/log/nginx/techstock-error.log;
 }
 NGINX
 
-# Permissões: nginx (usuário nginx) precisa ler os arquivos
-chown -R nginx:nginx /usr/share/nginx/html/techstock/
-chmod -R 755 /usr/share/nginx/html/techstock/
-echo "Permissões: OK"
-
-# Valida config do Nginx
 nginx -t && echo "Configuração Nginx: OK" || { echo "ERRO na configuração Nginx!"; exit 1; }
 
 systemctl enable nginx
-systemctl restart nginx   # restart (não start) garante que o novo conf seja carregado
-
+# CORREÇÃO: restart (não start) garante que novo conf seja carregado
+systemctl restart nginx
 sleep 2
-echo "Nginx status: $(systemctl is-active nginx)"
+echo "nginx: $(systemctl is-active nginx)"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 8 — Node Exporter
+# SEÇÃO 8 — Node Exporter + CloudWatch Agent
 # ══════════════════════════════════════════════════════════════════════════════
-
 echo ""
-echo "--- [6/6] Instalando Node Exporter ---"
-NODE_EXPORTER_VERSION="1.7.0"
+echo "--- [6/6] Instalando Node Exporter + CloudWatch Agent ---"
+
 wget -q \
   "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz" \
   -O /tmp/node_exporter.tar.gz
-
 tar xzf /tmp/node_exporter.tar.gz -C /tmp/
 cp /tmp/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter /usr/local/bin/
 chmod +x /usr/local/bin/node_exporter
 
 cat > /etc/systemd/system/node_exporter.service << 'NE'
 [Unit]
-Description=Node Exporter — métricas do sistema
+Description=Node Exporter
 After=network.target
-
 [Service]
 Type=simple
 User=nobody
 ExecStart=/usr/local/bin/node_exporter
 Restart=on-failure
-
 [Install]
 WantedBy=multi-user.target
 NE
 
-systemctl daemon-reload
-systemctl enable node_exporter
-systemctl start node_exporter
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 9 — CloudWatch Agent
-# ══════════════════════════════════════════════════════════════════════════════
-
-echo ""
-echo "--- Instalando CloudWatch Agent ---"
 dnf install -y amazon-cloudwatch-agent
 
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CW'
@@ -310,13 +293,13 @@ cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CW'
 }
 CW
 
-systemctl enable amazon-cloudwatch-agent
-systemctl start amazon-cloudwatch-agent
+systemctl daemon-reload
+systemctl enable node_exporter amazon-cloudwatch-agent
+systemctl start  node_exporter amazon-cloudwatch-agent
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 10 — Verificação final
+# VERIFICAÇÃO FINAL
 # ══════════════════════════════════════════════════════════════════════════════
-
 echo ""
 echo "============================================"
 echo " Verificação Final"
@@ -326,7 +309,7 @@ echo ""
 echo "Serviços:"
 for svc in nginx node_exporter amazon-cloudwatch-agent; do
   STATUS=$(systemctl is-active $svc 2>/dev/null)
-  ICON=$( [[ "$STATUS" == "active" ]] && echo "✓" || echo "✗" )
+  ICON=$([[ "$STATUS" == "active" ]] && echo "✓" || echo "✗")
   echo "  $ICON $svc: $STATUS"
 done
 
@@ -334,23 +317,22 @@ echo ""
 echo "Teste Nginx (local):"
 curl -s http://localhost/health
 echo ""
-for f in "" "index.html" "style.css" "app.js" "config.js"; do
-  URL="http://localhost/${f}"
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+for path in "" "index.html" "style.css" "app.js" "config.js"; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost/${path}")
   ICON=$([[ "$CODE" == "200" ]] && echo "✓" || echo "✗")
-  printf "  %s HTTP %s — %s\n" "$ICON" "$CODE" "${f:-/}"
+  printf "  %s HTTP %s — /%s\n" "$ICON" "$CODE" "$path"
 done
 
 echo ""
-echo "Verificação de permissões:"
-ls -la /usr/share/nginx/html/techstock/
+echo "Permissões:"
+ls -la $WEBROOT/
 
 echo ""
 echo "Logs de erro Nginx (últimas 5 linhas):"
 tail -5 /var/log/nginx/techstock-error.log 2>/dev/null || echo "  (sem erros)"
 
 echo ""
-echo "Teste node_exporter:"
+echo "Node Exporter:"
 curl -s http://localhost:9100/metrics | grep "^node_load1" | head -1
 
 echo ""
@@ -358,10 +340,17 @@ echo "============================================"
 echo " Setup Frontend CONCLUÍDO: $(date)"
 echo "============================================"
 echo ""
-echo "Próximos passos:"
-echo "  1. Registre esta instância no Target Group do ALB (porta 80)"
-echo "  2. Para atualizar a URL da API, edite o config.js:"
-echo "       sudo nano /usr/share/nginx/html/techstock/config.js"
-echo "  3. Para recarregar arquivos do S3 no futuro:"
-echo "       sudo aws s3 sync s3://$S3_BUCKET/ /usr/share/nginx/html/techstock/"
+MY_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null)
+echo "IP privado desta instância: $MY_IP"
 echo ""
+echo "PENDÊNCIAS MANUAIS (Console AWS):"
+echo "  1. Registrar este EC2 no Target Group do ALB (porta 80)"
+echo "  2. ALB Listener Rules — HTTP:80:"
+echo "       Prioridade 1 → /api*        → tg-backend"
+echo "       Prioridade 2 → /grafana*    → tg-monitoring"
+echo "       Prioridade 3 → /prometheus* → tg-monitoring"
+echo "       Prioridade 4 → /*           → tg-frontend"
+echo ""
+echo "Para atualizar a URL da API:"
+echo "  sudo nano $WEBROOT/config.js"
+echo "  (ou execute o script novamente)"

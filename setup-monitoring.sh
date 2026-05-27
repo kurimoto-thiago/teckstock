@@ -1,37 +1,31 @@
 #!/bin/bash
 # =============================================================================
 # setup-monitoring.sh — Configuração do EC2 Monitoring
-# TechStock | Prometheus + Grafana + node_exporter
+# TechStock | Prometheus + Grafana + Nginx + Node Exporter + CloudWatch
 # Execução interativa via SSM Session Manager
 #
-# CORREÇÕES APLICADAS:
-#   - grafana.ini com serve_from_sub_path=true (acesso via ALB /grafana)
-#   - Permissões /var/lib/grafana corrigidas
-#   - Datasource Prometheus provisionado automaticamente
-#   - Dashboards importados via script Python (sem depender de UI)
-#   - Prometheus com --web.external-url=/prometheus (acesso via ALB)
-#   - Validação de conectividade com o backend antes de finalizar
+# CORREÇÕES APLICADAS (vs versão anterior):
+#   - Nginx instalado e configurado como proxy reverso (ALB → Grafana/Prometheus)
+#   - prometheus.yml: metrics_path corrigido no job self-monitoring
+#   - grafana.ini: cookie_secure, cookie_samesite, allow_embedding adicionados
+#   - Datasource: UID PBFA97CFB590B2093 + URL via ALB (SSRF protection Grafana 13)
+#   - grafana-cli reset aponta para banco correto (/var/lib/grafana)
+#   - API path corrigido para /grafana/api/* (serve_from_sub_path=true)
+#   - Verificação final usa URL correta do Prometheus (/prometheus/api/v1/targets)
+#   - nginx adicionado na verificação de serviços
 # =============================================================================
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 1 — VARIÁVEIS (edite antes de executar)
+# SEÇÃO 1 — VARIÁVEIS FIXAS (não alterar)
 # ══════════════════════════════════════════════════════════════════════════════
-
-BACKEND_PRIVATE_IP="COLE_O_IP_PRIVADO_DO_EC2_BACKEND_AQUI"
-# Exemplo: 10.0.10.45
-# Console AWS → EC2 → Instances → techstock-backend → Private IPv4
-
-ALB_DNS="COLE_O_DNS_DO_ALB_AQUI"
-# Exemplo: techstock-lb-105375070.us-east-1.elb.amazonaws.com
-# Sem http:// — só o DNS
 
 GRAFANA_PASSWORD="TechStock@2024"
-
 PROMETHEUS_VERSION="2.51.2"
 NODE_EXPORTER_VERSION="1.7.0"
+DATASOURCE_UID="PBFA97CFB590B2093"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 2 — Validação
+# SEÇÃO 2 — ENTRADA INTERATIVA DE DADOS
 # ══════════════════════════════════════════════════════════════════════════════
 
 echo ""
@@ -39,20 +33,53 @@ echo "============================================"
 echo " TechStock — Setup Monitoring"
 echo " $(date)"
 echo "============================================"
-
-[[ "$BACKEND_PRIVATE_IP" == "COLE_O_IP_PRIVADO_DO_EC2_BACKEND_AQUI" ]] && \
-  echo "AVISO: BACKEND_PRIVATE_IP não configurado — configure depois em prometheus.yml" && \
-  BACKEND_PRIVATE_IP=""
-
-[[ "$ALB_DNS" == "COLE_O_DNS_DO_ALB_AQUI" ]] && \
-  echo "AVISO: ALB_DNS não configurado — Grafana ficará acessível somente via IP direto" && \
-  ALB_DNS="localhost"
-
 echo ""
-echo "  Backend IP = ${BACKEND_PRIVATE_IP:-'(configurar depois)'}"
-echo "  ALB DNS    = $ALB_DNS"
+
+# ALB DNS — obrigatório
+while true; do
+  echo "DNS do ALB (sem http://):"
+  echo "  Exemplo: techstock-lb-105375070.us-east-1.elb.amazonaws.com"
+  echo "  Console AWS → EC2 → Load Balancers → DNS name"
+  read -p "  → " ALB_DNS
+  ALB_DNS="${ALB_DNS// /}"   # remove espaços acidentais
+  [[ -n "$ALB_DNS" ]] && break
+  echo "  ✗ Obrigatório. Tente novamente."
+  echo ""
+done
+echo "  ✓ ALB DNS: $ALB_DNS"
 echo ""
-read -p "Confirma? (s/N): " CONFIRM
+
+# IP do Backend — opcional
+echo "IP privado do EC2 Backend (Enter para pular e configurar depois):"
+echo "  Exemplo: 10.0.10.45"
+echo "  Console AWS → EC2 → Instances → techstock-backend → Private IPv4"
+read -p "  → " BACKEND_PRIVATE_IP
+BACKEND_PRIVATE_IP="${BACKEND_PRIVATE_IP// /}"
+if [[ -n "$BACKEND_PRIVATE_IP" ]]; then
+  echo "  ✓ Backend IP: $BACKEND_PRIVATE_IP"
+else
+  echo "  ⚠ Pulado — configure depois em /etc/prometheus/prometheus.yml"
+fi
+echo ""
+
+# Senha do Grafana
+echo "Senha do Grafana admin (Enter para usar padrão: TechStock@2024):"
+read -p "  → " INPUT_PASS
+[[ -n "$INPUT_PASS" ]] && GRAFANA_PASSWORD="$INPUT_PASS"
+echo "  ✓ Senha: $GRAFANA_PASSWORD"
+echo ""
+
+# Confirmação final
+echo "--------------------------------------------"
+echo " Resumo da configuração:"
+echo "   ALB DNS    = $ALB_DNS"
+echo "   Backend IP = ${BACKEND_PRIVATE_IP:-'(configurar depois)'}"
+echo "   Grafana    = admin / $GRAFANA_PASSWORD"
+echo "   Prometheus = v$PROMETHEUS_VERSION"
+echo "   NodeExp    = v$NODE_EXPORTER_VERSION"
+echo "--------------------------------------------"
+echo ""
+read -p "Confirma e inicia a instalação? (s/N): " CONFIRM
 [[ "$CONFIRM" =~ ^[Ss]$ ]] || { echo "Cancelado."; exit 0; }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -60,16 +87,16 @@ read -p "Confirma? (s/N): " CONFIRM
 # ══════════════════════════════════════════════════════════════════════════════
 
 echo ""
-echo "--- [1/5] Atualizando sistema ---"
+echo "--- [1/6] Atualizando sistema e dependências ---"
 dnf update -y
-dnf install -y wget curl tar python3
+dnf install -y wget curl tar python3 nginx
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 4 — Node Exporter
 # ══════════════════════════════════════════════════════════════════════════════
 
 echo ""
-echo "--- [2/5] Instalando Node Exporter v${NODE_EXPORTER_VERSION} ---"
+echo "--- [2/6] Instalando Node Exporter v${NODE_EXPORTER_VERSION} ---"
 wget -q \
   "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz" \
   -O /tmp/node_exporter.tar.gz
@@ -103,7 +130,7 @@ curl -s http://localhost:9100/metrics | grep '^node_load1' | head -1
 # ══════════════════════════════════════════════════════════════════════════════
 
 echo ""
-echo "--- [3/5] Instalando Prometheus v${PROMETHEUS_VERSION} ---"
+echo "--- [3/6] Instalando Prometheus v${PROMETHEUS_VERSION} ---"
 
 useradd --no-create-home --shell /bin/false prometheus 2>/dev/null || true
 mkdir -p /etc/prometheus /var/lib/prometheus
@@ -155,6 +182,8 @@ else
   #     - targets: ['10.0.10.X:9100']"
 fi
 
+# CORREÇÃO: metrics_path obrigatório no job prometheus quando --web.route-prefix=/prometheus
+# Sem isso o self-monitoring fica DOWN com 404
 cat > /etc/prometheus/prometheus.yml << PROM
 global:
   scrape_interval:     15s
@@ -165,6 +194,7 @@ global:
 
 scrape_configs:
   - job_name: 'prometheus'
+    metrics_path: /prometheus/metrics
     static_configs:
       - targets: ['localhost:9090']
 
@@ -182,7 +212,7 @@ chown prometheus:prometheus /etc/prometheus/prometheus.yml
 /usr/local/bin/promtool check config /etc/prometheus/prometheus.yml \
   && echo "prometheus.yml: OK" || echo "ERRO no prometheus.yml!"
 
-# Serviço Prometheus — com subpath /prometheus para acesso via ALB
+# Serviço Prometheus com subpath /prometheus para acesso via ALB
 cat > /etc/systemd/system/prometheus.service << 'SVC'
 [Unit]
 Description=Prometheus
@@ -195,6 +225,7 @@ ExecStart=/usr/local/bin/prometheus \
   --storage.tsdb.path=/var/lib/prometheus \
   --storage.tsdb.retention.time=15d \
   --web.listen-address=0.0.0.0:9090 \
+  --web.external-url=/prometheus \
   --web.route-prefix=/prometheus
 Restart=on-failure
 RestartSec=5
@@ -209,12 +240,70 @@ sleep 3
 echo "prometheus: $(systemctl is-active prometheus)"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 6 — Grafana
-# CORREÇÕES: serve_from_sub_path, permissões, datasource provisionado
+# SEÇÃO 6 — Nginx (proxy reverso ALB → Grafana/Prometheus)
+#
+# OBRIGATÓRIO: O ALB usa um único Target Group por porta.
+# O Nginx escuta na porta 80 e roteia /grafana/ e /prometheus/ internamente.
+# Sem Nginx, o ALB não consegue rotear para dois serviços pelo mesmo TG.
 # ══════════════════════════════════════════════════════════════════════════════
 
 echo ""
-echo "--- [4/5] Instalando Grafana ---"
+echo "--- [4/6] Configurando Nginx ---"
+
+# Substitui nginx.conf padrão para evitar conflito com server block default do AL2023
+cat > /etc/nginx/nginx.conf << 'NGXMAIN'
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+include /usr/share/nginx/modules/*.conf;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/conf.d/*.conf;
+}
+NGXMAIN
+
+# Configura proxy para Grafana e Prometheus
+cat > /etc/nginx/conf.d/techstock-monitoring.conf << 'NGXCONF'
+server {
+    listen 80;
+
+    # Grafana — proxy para porta interna 3000
+    location /grafana/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Prometheus — proxy para porta interna 9090
+    location /prometheus/ {
+        proxy_pass http://127.0.0.1:9090;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+NGXCONF
+
+nginx -t && echo "nginx.conf: OK" || echo "ERRO no nginx.conf!"
+systemctl enable nginx
+systemctl start nginx
+sleep 2
+echo "nginx: $(systemctl is-active nginx)"
+curl -s http://localhost/grafana/api/health | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print('  Grafana via Nginx:', d.get('database','?'))" \
+  2>/dev/null || echo "  (Grafana ainda inicializando)"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 7 — Grafana
+# ══════════════════════════════════════════════════════════════════════════════
+
+echo ""
+echo "--- [5/6] Instalando e configurando Grafana ---"
 
 cat > /etc/yum.repos.d/grafana.repo << 'REPO'
 [grafana]
@@ -231,19 +320,28 @@ REPO
 dnf install -y grafana
 echo "Grafana: $(grafana-server --version 2>/dev/null | head -1)"
 
-# CORREÇÃO: grafana.ini com subpath correto para acesso via ALB
+# grafana.ini — configuração completa para sub-path via ALB
+# ATENÇÃO: nunca duplique seções neste arquivo — causa loop de login
 cat > /etc/grafana/grafana.ini << GINI
 [server]
 http_addr = 0.0.0.0
 http_port = 3000
+# domain: DNS do ALB sem protocolo e sem path
 domain    = ${ALB_DNS}
+# root_url: URL completa com /grafana/ no final (trailing slash obrigatória)
 root_url  = %(protocol)s://%(domain)s/grafana/
+# serve_from_sub_path: obrigatório para acesso via sub-path
 serve_from_sub_path = true
 
 [security]
 admin_user     = admin
 admin_password = ${GRAFANA_PASSWORD}
 secret_key     = techstock-$(date +%s)
+# allow_embedding: permite iframes nos painéis
+allow_embedding = true
+# cookie settings: necessários para evitar loop de login sem HTTPS
+cookie_secure   = false
+cookie_samesite = lax
 
 [auth.anonymous]
 enabled = false
@@ -257,57 +355,57 @@ mode  = console
 level = warn
 GINI
 
-# CORREÇÃO: datasource provisionado automaticamente
-mkdir -p /etc/grafana/provisioning/datasources
-cat > /etc/grafana/provisioning/datasources/prometheus.yml << 'DS'
-apiVersion: 1
-deleteDatasources:
-  - name: Prometheus
-    orgId: 1
-datasources:
-  - name:      Prometheus
-    type:      prometheus
-    uid:       prometheus-techstock
-    access:    proxy
-    orgId:     1
-    url:       http://localhost:9090/prometheus
-    isDefault: true
-    editable:  true
-    jsonData:
-      timeInterval: "15s"
-DS
-
-# CORREÇÃO: permissões do diretório de dados do Grafana
+# Permissões do banco de dados do Grafana
 chown -R grafana:grafana /etc/grafana/
 chown -R grafana:grafana /var/lib/grafana/
-chmod -R 755 /var/lib/grafana/
+chmod 640 /var/lib/grafana/grafana.db 2>/dev/null || true
 
 systemctl daemon-reload
 systemctl enable grafana-server
 systemctl start grafana-server
-sleep 8
+sleep 10
 echo "grafana-server: $(systemctl is-active grafana-server)"
 
-# Confirma que a API responde
+# Reseta senha no banco correto (/var/lib/grafana/grafana.db)
+# IMPORTANTE: --configOverrides aponta para o banco real do serviço
+echo "Resetando senha do admin no banco correto..."
+grafana-cli \
+  --homepath /usr/share/grafana \
+  --config /etc/grafana/grafana.ini \
+  --configOverrides 'cfg:default.paths.data=/var/lib/grafana' \
+  admin reset-admin-password "${GRAFANA_PASSWORD}" 2>/dev/null
+
+systemctl restart grafana-server
+sleep 8
+
+# Confirma que a API responde (path correto com serve_from_sub_path=true)
 echo "Grafana API:"
-curl -s -u admin:${GRAFANA_PASSWORD} http://localhost:3000/grafana/api/health \
+curl -s -u "admin:${GRAFANA_PASSWORD}" http://localhost:3000/grafana/api/health \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print('  database:', d.get('database','?'))" \
   2>/dev/null || echo "  (aguardando inicialização...)"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 7 — Importa Dashboards automaticamente
+# SEÇÃO 8 — Datasource Prometheus + Dashboards
+#
+# CORREÇÃO CRÍTICA — Grafana 13 SSRF Protection:
+# Grafana 13 bloqueia datasources com URL localhost/127.0.0.1.
+# A URL do datasource DEVE usar o ALB público.
+#
+# UID fixo PBFA97CFB590B2093 é hardcoded nos dashboards JSON do TechStock.
 # ══════════════════════════════════════════════════════════════════════════════
 
 echo ""
-echo "--- [5/5] Importando dashboards do Grafana ---"
-sleep 5  # aguarda Grafana inicializar completamente
+echo "--- [6/6] Criando datasource e importando dashboards ---"
+sleep 5
 
-python3 << 'PYEOF'
+python3 << PYEOF
 import urllib.request, urllib.error, json, sys, time, base64
 
 GRAFANA  = "http://localhost:3000/grafana"
 USER     = "admin"
-PASS     = "TechStock@2024"
+PASS     = "${GRAFANA_PASSWORD}"
+ALB_DNS  = "${ALB_DNS}"
+DS_UID   = "${DATASOURCE_UID}"
 
 def gf(method, path, data=None):
     url = GRAFANA + path
@@ -326,71 +424,85 @@ def gf(method, path, data=None):
 
 # Aguarda Grafana estar pronto
 print("Aguardando Grafana...")
-for i in range(12):
+for i in range(15):
     h = gf("GET", "/api/health")
     if h.get("database") == "ok":
-        print(f"  Grafana pronto!")
+        print("  Grafana pronto!")
         break
     time.sleep(5)
 else:
-    print("  AVISO: Grafana pode não estar pronto — tentando mesmo assim")
-
-# Pega datasource
-ds_list = gf("GET", "/api/datasources")
-prom = next((d for d in (ds_list if isinstance(ds_list, list) else []) if d.get("type") == "prometheus"), None)
-if not prom:
-    print("Datasource não encontrado via provisioning — criando via API...")
-    prom = gf("POST", "/api/datasources", {
-        "name": "Prometheus", "type": "prometheus",
-        "uid": "prometheus-techstock",
-        "url": "http://localhost:9090/prometheus",
-        "access": "proxy", "isDefault": True
-    })
-    ds_list = gf("GET", "/api/datasources")
-    prom = next((d for d in (ds_list if isinstance(ds_list, list) else []) if d.get("type") == "prometheus"), None)
-
-if not prom:
-    print("ERRO: não foi possível criar o datasource Prometheus")
+    print("  ERRO: Grafana não respondeu — verifique grafana-server")
     sys.exit(1)
 
-ds_uid  = prom["uid"]
-ds_name = prom["name"]
-print(f"Datasource: {ds_name} (uid={ds_uid})")
+# Remove datasource existente (qualquer UID) e cria com UID e URL corretos
+print(f"Configurando datasource (uid={DS_UID})...")
+ds_list = gf("GET", "/api/datasources")
+if isinstance(ds_list, list):
+    for ds in ds_list:
+        if ds.get("type") == "prometheus":
+            old_uid = ds.get("uid")
+            r = gf("DELETE", f"/api/datasources/uid/{old_uid}")
+            print(f"  Removido datasource antigo: {old_uid}")
 
-# Importa dashboards da comunidade Grafana
+# URL via ALB — obrigatório no Grafana 13 (SSRF protection bloqueia localhost)
+ds_url = f"http://{ALB_DNS}/prometheus"
+result = gf("POST", "/api/datasources", {
+    "name":      "Prometheus",
+    "type":      "prometheus",
+    "uid":       DS_UID,
+    "url":       ds_url,
+    "access":    "proxy",
+    "isDefault": True,
+    "jsonData":  {"timeInterval": "15s"}
+})
+if result.get("message") == "Datasource added":
+    print(f"  ✓ Datasource criado: uid={DS_UID} url={ds_url}")
+else:
+    print(f"  ✗ Erro ao criar datasource: {result}")
+    sys.exit(1)
+
+# Importa dashboards da comunidade Grafana (substitui placeholder pelo UID correto)
 dashboards = [
-    (1860,  "node-exporter-full",  "Node Exporter Full"),
-    (11159, "nodejs-application",  "Node.js Application"),
-    (3662,  "prometheus-stats",    "Prometheus Stats"),
+    (1860,  "node-exporter-full", "Node Exporter Full"),
+    (11159, "nodejs-application", "Node.js Application"),
+    (3662,  "prometheus-stats",   "Prometheus Stats"),
 ]
 
 for gnet_id, slug, title in dashboards:
     print(f"\nImportando: {title} (ID {gnet_id})...")
     try:
         url = f"https://grafana.com/api/dashboards/{gnet_id}/revisions/latest/download"
-        with urllib.request.urlopen(url, timeout=30) as r:
-            dash = json.loads(r.read())
+        req = urllib.request.Request(url)
+        req.add_header("Accept-Encoding", "gzip, deflate")
+        req.add_header("User-Agent", "Mozilla/5.0")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            raw = r.read()
+            # Descomprime gzip se necessário
+            encoding = r.headers.get("Content-Encoding", "")
+            if encoding == "gzip" or (raw[:2] == b'\x1f\x8b'):
+                import gzip as gz
+                raw = gz.decompress(raw)
+            dash = json.loads(raw.decode("utf-8"))
         dash["id"]  = None
         dash["uid"] = slug
-
-        # Substitui todos os placeholders de datasource
         dash_str = json.dumps(dash)
+        # Substitui todos os placeholders de datasource pelo UID correto
         for ph in ['"${DS_PROMETHEUS}"', '"${DS_PROMETHEUS_1}"',
                    '"${DS_PROMETHEUS_2}"', '"${DS_PROMETHEUS_3}"',
+                   '"${DS_THEMIS}"', '"${DS_PROMETHEUS_4}"',
                    '${DS_PROMETHEUS}']:
-            dash_str = dash_str.replace(ph, f'"{ds_uid}"')
-
+            dash_str = dash_str.replace(ph, f'"{DS_UID}"')
         result = gf("POST", "/api/dashboards/db", {
             "dashboard": json.loads(dash_str),
             "overwrite": True,
-            "folderId": 0
+            "folderId":  0
         })
         if result.get("status") == "success":
             print(f"  ✓ Importado → /grafana/d/{slug}")
         else:
             print(f"  ✗ Erro: {result.get('message', result)}")
     except Exception as e:
-        print(f"  ✗ Falha ao baixar/importar: {e}")
+        print(f"  ✗ Falha: {e}")
 
 print("\nDashboards disponíveis:")
 for d in (gf("GET", "/api/search?type=dash-db") or []):
@@ -433,7 +545,7 @@ echo "============================================"
 
 echo ""
 echo "Serviços:"
-for svc in node_exporter prometheus grafana-server amazon-cloudwatch-agent; do
+for svc in node_exporter prometheus nginx grafana-server amazon-cloudwatch-agent; do
   STATUS=$(systemctl is-active $svc 2>/dev/null)
   ICON=$([[ "$STATUS" == "active" ]] && echo "✓" || echo "✗")
   echo "  $ICON $svc: $STATUS"
@@ -441,13 +553,14 @@ done
 
 echo ""
 echo "Portas abertas:"
-ss -tlnp | grep -E ':(9090|9100|3000)\s' | awk '{print "  " $1 " " $4}'
+ss -tlnp | grep -E ':(80|9090|9100|3000)\s' | awk '{print "  " $1 " " $4}'
 
 MY_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null)
 
 echo ""
 echo "Targets Prometheus:"
 sleep 3
+# CORREÇÃO: URL correta com /prometheus/api/v1/targets (route-prefix=/prometheus)
 curl -s http://localhost:9090/prometheus/api/v1/targets 2>/dev/null \
   | python3 -c "
 import sys,json
@@ -464,12 +577,12 @@ except Exception as e:
 if [[ -n "$BACKEND_PRIVATE_IP" ]]; then
   echo ""
   echo "Conectividade com o Backend:"
-  curl -s --connect-timeout 3 http://${BACKEND_PRIVATE_IP}:3000/metrics | head -3 \
+  curl -s --connect-timeout 3 "http://${BACKEND_PRIVATE_IP}:3000/metrics" | head -3 \
     && echo "  ✓ Backend /metrics acessível" \
-    || echo "  ✗ Backend /metrics inacessível — verifique SG"
-  curl -s --connect-timeout 3 http://${BACKEND_PRIVATE_IP}:9100/metrics | head -3 \
+    || echo "  ✗ Backend /metrics inacessível — verifique SG (porta 3000)"
+  curl -s --connect-timeout 3 "http://${BACKEND_PRIVATE_IP}:9100/metrics" | head -3 \
     && echo "  ✓ Backend node_exporter acessível" \
-    || echo "  ✗ Backend node_exporter inacessível — verifique SG"
+    || echo "  ✗ Backend node_exporter inacessível — verifique SG (porta 9100)"
 fi
 
 echo ""
@@ -482,9 +595,16 @@ echo "  Grafana:    http://${ALB_DNS}/grafana  (admin / ${GRAFANA_PASSWORD})"
 echo "  Prometheus: http://${ALB_DNS}/prometheus"
 echo "  IP privado: ${MY_IP}"
 echo ""
+echo "PENDÊNCIAS MANUAIS (Console AWS):"
+echo "  1. Target Group tg-monitoring → porta 80 (não 3000)"
+echo "  2. ALB Listener Rules:"
+echo "       Prioridade 1 → /grafana*    → tg-monitoring"
+echo "       Prioridade 2 → /prometheus* → tg-monitoring"
+echo "       Prioridade 3 → /*           → tg-frontend"
 if [[ -z "$BACKEND_PRIVATE_IP" ]]; then
-  echo "PENDENTE: Configure o IP do backend em /etc/prometheus/prometheus.yml"
-  echo "  sudo nano /etc/prometheus/prometheus.yml"
-  echo "  sudo promtool check config /etc/prometheus/prometheus.yml"
-  echo "  sudo systemctl restart prometheus"
+  echo ""
+  echo "  3. Configure o IP do backend em /etc/prometheus/prometheus.yml:"
+  echo "       sudo nano /etc/prometheus/prometheus.yml"
+  echo "       sudo promtool check config /etc/prometheus/prometheus.yml"
+  echo "       sudo systemctl restart prometheus"
 fi

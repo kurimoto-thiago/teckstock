@@ -43,7 +43,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus-techstock"
+          "uid": "PBFA97CFB590B2093"
         },
         "targets": [
           {
@@ -51,7 +51,7 @@
             "refId": "A",
             "datasource": {
               "type": "prometheus",
-              "uid": "prometheus-techstock"
+              "uid": "PBFA97CFB590B2093"
             },
             "legendFormat": ""
           }
@@ -90,7 +90,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus-techstock"
+          "uid": "PBFA97CFB590B2093"
         },
         "targets": [
           {
@@ -98,7 +98,7 @@
             "refId": "A",
             "datasource": {
               "type": "prometheus",
-              "uid": "prometheus-techstock"
+              "uid": "PBFA97CFB590B2093"
             },
             "legendFormat": ""
           }
@@ -137,7 +137,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus-techstock"
+          "uid": "PBFA97CFB590B2093"
         },
         "targets": [
           {
@@ -145,7 +145,7 @@
             "refId": "A",
             "datasource": {
               "type": "prometheus",
-              "uid": "prometheus-techstock"
+              "uid": "PBFA97CFB590B2093"
             },
             "legendFormat": ""
           }
@@ -200,7 +200,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus-techstock"
+          "uid": "PBFA97CFB590B2093"
         },
         "targets": [
           {
@@ -208,7 +208,7 @@
             "refId": "A",
             "datasource": {
               "type": "prometheus",
-              "uid": "prometheus-techstock"
+              "uid": "PBFA97CFB590B2093"
             },
             "legendFormat": ""
           }
@@ -247,7 +247,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus-techstock"
+          "uid": "PBFA97CFB590B2093"
         },
         "targets": [
           {
@@ -255,7 +255,7 @@
             "refId": "A",
             "datasource": {
               "type": "prometheus",
-              "uid": "prometheus-techstock"
+              "uid": "PBFA97CFB590B2093"
             },
             "legendFormat": ""
           }
@@ -291,7 +291,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus-techstock"
+          "uid": "PBFA97CFB590B2093"
         },
         "targets": [
           {
@@ -299,7 +299,7 @@
             "refId": "A",
             "datasource": {
               "type": "prometheus",
-              "uid": "prometheus-techstock"
+              "uid": "PBFA97CFB590B2093"
             },
             "legendFormat": ""
           }
@@ -335,7 +335,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus-techstock"
+          "uid": "PBFA97CFB590B2093"
         },
         "targets": [
           {
@@ -343,7 +343,7 @@
             "refId": "A",
             "datasource": {
               "type": "prometheus",
-              "uid": "prometheus-techstock"
+              "uid": "PBFA97CFB590B2093"
             },
             "legendFormat": ""
           }
@@ -379,7 +379,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus-techstock"
+          "uid": "PBFA97CFB590B2093"
         },
         "targets": [
           {
@@ -387,7 +387,7 @@
             "refId": "A",
             "datasource": {
               "type": "prometheus",
-              "uid": "prometheus-techstock"
+              "uid": "PBFA97CFB590B2093"
             },
             "legendFormat": ""
           }
@@ -423,7 +423,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus-techstock"
+          "uid": "PBFA97CFB590B2093"
         },
         "targets": [
           {
@@ -431,7 +431,7 @@
             "refId": "A",
             "datasource": {
               "type": "prometheus",
-              "uid": "prometheus-techstock"
+              "uid": "PBFA97CFB590B2093"
             },
             "legendFormat": ""
           }

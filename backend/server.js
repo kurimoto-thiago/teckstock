@@ -101,12 +101,12 @@ app.get('/api/health', async (req, res) => {
     const { rows } = await q('SELECT NOW() AS ts, version() AS ver');
     res.json({
       ok:          true,
-      database:    'connected',
+      database:    'connected',  // para compatibilidade com testes
       db:          rows[0],
       cors_origin: req.headers.origin || 'direct',
       hostname:    os.hostname(),
-      uptime_s:    Math.floor(process.uptime()),
       uptime:      Math.floor(process.uptime()),
+      uptime_s:    Math.floor(process.uptime()),  // alias para compatibilidade
       env:         process.env.NODE_ENV || 'production',
     });
   } catch (e) {
@@ -118,16 +118,6 @@ app.get('/api/health', async (req, res) => {
 app.get('/api/categorias', async (_req, res) => {
   const { rows } = await q('SELECT * FROM categorias ORDER BY nome');
   res.json(rows);
-});
-
-app.post('/api/categorias', async (req, res) => {
-  const { nome, cor } = req.body;
-  if (!nome) return res.status(400).json({ error: 'nome é obrigatório' });
-  const { rows } = await q(
-    'INSERT INTO categorias (nome, cor) VALUES ($1, $2) RETURNING *',
-    [nome, cor || '#6366f1']
-  );
-  res.status(201).json(rows[0]);
 });
 
 // ── Produtos — listagem + filtros ─────────────────────────────────────────────

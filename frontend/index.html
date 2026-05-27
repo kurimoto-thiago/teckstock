@@ -23,6 +23,7 @@
 <div class="nav">
   <button class="nav-btn active" onclick="showPage('dashboard')">📊 Dashboard</button>
   <button class="nav-btn"        onclick="showPage('produtos')">📦 Produtos</button>
+  <button class="nav-btn"        onclick="showPage('movimentacoes')">🔄 Movimentações</button>
   <button class="nav-btn"        onclick="showPage('alertas')">🔔 Alertas</button>
 </div>
 
@@ -55,6 +56,46 @@
     </div>
     <table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th>Local</th><th>Estoque</th><th>Custo</th><th>Ações</th></tr></thead>
     <tbody id="prod-tb"><tr class="empty"><td colspan="7"><span class="spin"></span>Carregando...</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- MOVIMENTAÇÕES -->
+<div class="page" id="page-movimentacoes">
+  <div class="tw">
+    <div class="th">
+      <h2>🔄 Movimentações</h2>
+      <div class="ta" style="flex-wrap:wrap;gap:8px">
+        <select class="inp" id="mn-tipo" onchange="_fetchMovs()" style="min-width:150px">
+          <option value="">Todos os tipos</option>
+          <option value="entrada">📥 Entrada</option>
+          <option value="saida">📤 Saída</option>
+          <option value="ajuste">⚖️ Ajuste</option>
+        </select>
+        <select class="inp" id="mn-prod" onchange="_fetchMovs()" style="min-width:220px">
+          <option value="">Todos os produtos</option>
+        </select>
+        <button class="btn btn-p" onclick="abrirNovaMovimentacao()">+ Nova Movimentação</button>
+      </div>
+    </div>
+    <div style="padding:6px 0 4px;font-size:13px;color:var(--muted)">
+      <span id="mov-count"></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Data/Hora</th>
+          <th>Tipo</th>
+          <th>Produto</th>
+          <th style="text-align:center">Qtd Anterior</th>
+          <th style="text-align:center">Movimentação</th>
+          <th style="text-align:center">Qtd Nova</th>
+          <th>Motivo · Responsável</th>
+        </tr>
+      </thead>
+      <tbody id="mov-tb">
+        <tr class="empty"><td colspan="7"><span class="spin"></span>Carregando...</td></tr>
+      </tbody>
+    </table>
   </div>
 </div>
 
@@ -95,7 +136,11 @@
         <div class="fg"><label>Localização</label><input class="inp" id="p-loc" placeholder="A1-01"></div>
       </div>
       <div class="fr">
-        <div class="fg"><label>Qtd. Inicial</label><input class="inp" type="number" id="p-qty" value="0" min="0"></div>
+        <div class="fg">
+          <label>Qtd. Inicial</label>
+          <input class="inp" type="number" id="p-qty" value="0" min="0">
+          <div id="p-qty-hint" style="margin-top:4px;min-height:16px"></div>
+        </div>
         <div class="fg"><label>Qtd. Mínima</label><input class="inp" type="number" id="p-min" value="5" min="0"></div>
       </div>
       <div class="fg"><label>Preço de Custo (R$)</label><input class="inp" type="number" id="p-custo" value="0" step="0.01" min="0"></div>
@@ -107,7 +152,7 @@
   </div>
 </div>
 
-<!-- MODAL MOVIMENTAÇÃO -->
+<!-- MODAL MOVIMENTAÇÃO RÁPIDA (via botão ↕ na tabela de produtos) -->
 <div class="ov" id="ov-mov">
   <div class="modal">
     <div class="mh"><h3>Movimentar Estoque</h3><button class="mclose" onclick="closeModal('ov-mov')">✕</button></div>
@@ -117,19 +162,52 @@
       <div class="fr">
         <div class="fg"><label>Tipo *</label>
           <select class="inp" id="m-tipo">
-            <option value="entrada">📥 Entrada</option>
             <option value="saida">📤 Saída</option>
+            <option value="entrada">📥 Entrada</option>
             <option value="ajuste">⚖️ Ajuste</option>
           </select>
         </div>
         <div class="fg"><label>Quantidade *</label><input class="inp" type="number" id="m-qty" value="1" min="1"></div>
       </div>
-      <div class="fg"><label>Motivo</label><input class="inp" id="m-motivo" placeholder="Ex: Compra NF-001"></div>
+      <div class="fg"><label>Motivo</label><input class="inp" id="m-motivo" placeholder="Ex: Venda NF-001, Reposição, Inventário"></div>
       <div class="fg"><label>Responsável</label><input class="inp" id="m-resp" value="web" placeholder="Nome ou matrícula"></div>
     </div>
     <div class="mf">
       <button class="btn btn-o" onclick="closeModal('ov-mov')">Cancelar</button>
       <button class="btn btn-p" onclick="saveMov()">✅ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NOVA MOVIMENTAÇÃO (via página Movimentações) -->
+<div class="ov" id="ov-mov-novo">
+  <div class="modal">
+    <div class="mh"><h3>🔄 Nova Movimentação</h3><button class="mclose" onclick="closeModal('ov-mov-novo')">✕</button></div>
+    <div class="mb">
+      <input type="hidden" id="mn-mov-pid">
+      <div class="fg">
+        <label>Produto *</label>
+        <select class="inp" id="mn-mov-psel" onchange="onMovProdSelect()">
+          <option value="">Selecione o produto...</option>
+        </select>
+        <div id="mn-mov-pnome" style="font-size:12px;color:var(--muted);margin-top:4px;min-height:16px"></div>
+      </div>
+      <div class="fr">
+        <div class="fg"><label>Tipo *</label>
+          <select class="inp" id="mn-mov-tipo">
+            <option value="saida">📤 Saída</option>
+            <option value="entrada">📥 Entrada</option>
+            <option value="ajuste">⚖️ Ajuste</option>
+          </select>
+        </div>
+        <div class="fg"><label>Quantidade *</label><input class="inp" type="number" id="mn-mov-qty" value="1" min="1"></div>
+      </div>
+      <div class="fg"><label>Motivo</label><input class="inp" id="mn-mov-motivo" placeholder="Ex: Venda NF-001, Reposição, Ajuste inventário"></div>
+      <div class="fg"><label>Responsável</label><input class="inp" id="mn-mov-resp" value="web" placeholder="Nome ou matrícula"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-o" onclick="closeModal('ov-mov-novo')">Cancelar</button>
+      <button class="btn btn-p" onclick="saveMovNovo()">✅ Confirmar</button>
     </div>
   </div>
 </div>
@@ -147,7 +225,6 @@
   <div class="modal" style="max-width:480px">
     <div class="mh"><h3>⚙ Configuração da API</h3><button class="mclose" onclick="closeModal('ov-cfg')">✕</button></div>
     <div class="mb">
-      <!-- API Backend -->
       <div class="cfg-section">
         <div class="cfg-section-label">🔵 Backend / API</div>
         <div class="fg">
@@ -158,8 +235,6 @@
         </div>
         <div class="tr-res" id="cfg-res"></div>
       </div>
-
-      <!-- Grafana -->
       <div class="cfg-section">
         <div class="cfg-section-label">🟠 Grafana</div>
         <div class="fg">
@@ -170,8 +245,6 @@
         </div>
         <div class="tr-res" id="cfg-graf-res"></div>
       </div>
-
-      <!-- Prometheus -->
       <div class="cfg-section">
         <div class="cfg-section-label">🔴 Prometheus</div>
         <div class="fg">
@@ -199,54 +272,30 @@
 
 <style>
 /* ── Badge group ──────────────────────────────────────────────────────────── */
-.badge-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-/* Grafana badge — laranja */
-.badge-graf {
-  color: #fbbf24 !important;
-}
-.badge-graf.ok   { color: #86efac !important; }
-.badge-graf.fail { color: #fca5a5 !important; }
-.badge-graf.busy { color: #fbbf24 !important; }
+.badge-group { display:flex; align-items:center; gap:6px; }
 
-/* Prometheus badge — vermelho/rosa */
-.badge-prom {
-  color: #f9a8d4 !important;
-}
-.badge-prom.ok   { color: #86efac !important; }
-.badge-prom.fail { color: #fca5a5 !important; }
-.badge-prom.busy { color: #f9a8d4 !important; }
+.badge-graf { color:#fbbf24 !important; }
+.badge-graf.ok   { color:#86efac !important; }
+.badge-graf.fail { color:#fca5a5 !important; }
+.badge-graf.busy { color:#fbbf24 !important; }
 
-/* Cursor pointer para os badges de serviço */
-#graf-badge, #prom-badge {
-  cursor: pointer;
-}
-#graf-badge:hover, #prom-badge:hover {
-  background: rgba(255,255,255,.3);
-}
+.badge-prom { color:#f9a8d4 !important; }
+.badge-prom.ok   { color:#86efac !important; }
+.badge-prom.fail { color:#fca5a5 !important; }
+.badge-prom.busy { color:#f9a8d4 !important; }
+
+#graf-badge, #prom-badge { cursor:pointer; }
+#graf-badge:hover, #prom-badge:hover { background:rgba(255,255,255,.3); }
 
 /* Config modal sections */
-.cfg-section {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 16px;
-  margin-bottom: 14px;
-}
-.cfg-section:last-child { margin-bottom: 0; }
-.cfg-section-label {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: .4px;
-  margin-bottom: 10px;
-}
+.cfg-section { border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; margin-bottom:14px; }
+.cfg-section:last-child { margin-bottom:0; }
+.cfg-section-label { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:10px; }
+#ov-cfg .modal { max-width:560px; }
 
-/* Modal mais largo para caber 3 seções */
-#ov-cfg .modal { max-width: 560px; }
+/* Movimentações — cores inline */
+.pos { color:var(--green, #22c55e); }
+.neg { color:var(--red,   #ef4444); }
 </style>
 
 <script>
@@ -254,81 +303,59 @@
 const LS_GRAF = 'techstock_grafana_url';
 const LS_PROM = 'techstock_prometheus_url';
 
-/* ── Getters/Setters ─────────────────────────────────────────────────────── */
-function getGrafUrl() {
-  return localStorage.getItem(LS_GRAF) || '';
-}
-function getPromUrl() {
-  return localStorage.getItem(LS_PROM) || '';
-}
+function getGrafUrl() { return localStorage.getItem(LS_GRAF) || ''; }
+function getPromUrl() { return localStorage.getItem(LS_PROM) || ''; }
 function setGrafUrl(u) { localStorage.setItem(LS_GRAF, u.replace(/\/$/, '')); }
 function setPromUrl(u) { localStorage.setItem(LS_PROM, u.replace(/\/$/, '')); }
 
-/* ── Abrir serviço em nova aba ───────────────────────────────────────────── */
 function openService(svc) {
   const url = svc === 'graf' ? getGrafUrl() : getPromUrl();
-  if (!url) {
-    openConfig();   // sem URL configurada → abre o modal de config
-    return;
-  }
+  if (!url) { openConfig(); return; }
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-/* ── Verificar saúde de um serviço ──────────────────────────────────────── */
 async function checkService(url, badgeId) {
   const el = document.getElementById(badgeId);
   if (!el) return;
+  const label = badgeId === 'graf-badge' ? 'Grafana' : 'Prometheus';
   if (!url) {
-    el.className   = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' fail';
-    el.textContent = '⬤ ' + (badgeId === 'graf-badge' ? 'Grafana' : 'Prometheus');
-    return;
+    el.className = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' fail';
+    el.textContent = '⬤ ' + label; return;
   }
   el.className = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' busy';
   try {
-    // Usa HEAD para não baixar o conteúdo completo
-    await fetch(url, {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(6000),
-      mode: 'no-cors'   // Grafana/Prometheus podem não ter CORS — no-cors sempre "ok"
-    });
-    el.className   = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' ok';
-    el.textContent = '⬤ ' + (badgeId === 'graf-badge' ? 'Grafana' : 'Prometheus');
-  } catch (e) {
-    el.className   = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' fail';
-    el.textContent = '⬤ ' + (badgeId === 'graf-badge' ? 'Grafana' : 'Prometheus');
+    await fetch(url, { method:'HEAD', signal:AbortSignal.timeout(6000), mode:'no-cors' });
+    el.className = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' ok';
+  } catch {
+    el.className = el.className.replace(/\b(ok|fail|busy)\b/g, '').trim() + ' fail';
   }
+  el.textContent = '⬤ ' + label;
 }
 
-/* ── Testar serviço no modal (com feedback textual) ─────────────────────── */
 async function testService(svc) {
   const isGraf = svc === 'graf';
   const urlEl  = document.getElementById(isGraf ? 'cfg-graf-url' : 'cfg-prom-url');
   const resEl  = document.getElementById(isGraf ? 'cfg-graf-res' : 'cfg-prom-res');
   const url    = urlEl.value.trim().replace(/\/$/, '');
   if (!url) { resEl.className = 'tr-res fail'; resEl.textContent = '❌ Informe a URL'; return; }
-  resEl.className   = 'tr-res busy';
-  resEl.textContent = '🔌 Testando...';
+  resEl.className = 'tr-res busy'; resEl.textContent = '🔌 Testando...';
   try {
-    await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(6000), mode: 'no-cors' });
-    resEl.className   = 'tr-res ok';
-    resEl.textContent = '✅ Acessível em ' + url;
+    await fetch(url, { method:'HEAD', signal:AbortSignal.timeout(6000), mode:'no-cors' });
+    resEl.className = 'tr-res ok'; resEl.textContent = '✅ Acessível em ' + url;
   } catch (e) {
-    resEl.className   = 'tr-res fail';
-    resEl.textContent = '❌ ' + e.message + ' — verifique a URL e o SG';
+    resEl.className = 'tr-res fail'; resEl.textContent = '❌ ' + e.message;
   }
 }
 
-/* ── Testar todos os serviços de uma vez ──────────────────────────────────── */
 async function testAllServices() {
-  testApi();                  // já existe em app.js
+  testApi();
   testService('graf');
   testService('prom');
 }
 
-/* ── Override de openConfig para preencher os novos campos ──────────────── */
 const _origOpenConfig = openConfig;
 openConfig = function() {
-  _origOpenConfig();   // chama o original (preenche cfg-url e abre o modal)
+  _origOpenConfig();
   document.getElementById('cfg-graf-url').value         = getGrafUrl();
   document.getElementById('cfg-graf-atual').textContent = getGrafUrl() || '(não configurado)';
   document.getElementById('cfg-graf-res').textContent   = '';
@@ -339,25 +366,39 @@ openConfig = function() {
   document.getElementById('cfg-prom-res').className     = 'tr-res';
 };
 
-/* ── Override de saveConfig para salvar os novos campos ─────────────────── */
 const _origSaveConfig = saveConfig;
 saveConfig = function() {
   const grafUrl = document.getElementById('cfg-graf-url').value.trim().replace(/\/$/, '');
   const promUrl = document.getElementById('cfg-prom-url').value.trim().replace(/\/$/, '');
   if (grafUrl) setGrafUrl(grafUrl);
   if (promUrl) setPromUrl(promUrl);
-  _origSaveConfig();   // salva a API URL e recarrega a página
+  _origSaveConfig();
 };
 
-/* ── Verifica saúde de Grafana e Prometheus no carregamento ─────────────── */
+/* Popula select de produtos no modal nova movimentação */
+async function _populateMovNovoProdSel() {
+  const sel = document.getElementById('mn-mov-psel');
+  if (!sel || sel.dataset.loaded) return;
+  try {
+    const prods = await api('/api/produtos');
+    sel.innerHTML = '<option value="">Selecione o produto...</option>' +
+      prods.map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('');
+    sel.dataset.loaded = '1';
+  } catch { /* silencioso */ }
+}
+
+/* Override abrirNovaMovimentacao para popular select no momento certo */
+const _origAbrirNovaMov = abrirNovaMovimentacao;
+abrirNovaMovimentacao = async function() {
+  _origAbrirNovaMov();
+  await _populateMovNovoProdSel();
+};
+
 document.addEventListener('DOMContentLoaded', () => {
-  // Pequeno delay para não competir com o checkApi() do app.js
   setTimeout(() => {
     checkService(getGrafUrl(), 'graf-badge');
     checkService(getPromUrl(), 'prom-badge');
   }, 800);
-
-  // Re-verifica a cada 60 segundos
   setInterval(() => {
     checkService(getGrafUrl(), 'graf-badge');
     checkService(getPromUrl(), 'prom-badge');
