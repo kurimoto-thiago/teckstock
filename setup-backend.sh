@@ -26,6 +26,19 @@ echo " $(date)"
 echo "============================================"
 echo ""
 
+# Região da AWS
+while true; do
+  echo "Região AWS:"
+  echo "  Exemplo: us-east-1, us-west-2, sa-east-1"
+  read -p "  → " REGION
+  REGION="${REGION// /}"
+  [[ -n "$REGION" ]] && break
+  echo "  ✗ Obrigatório. Tente novamente."
+  echo ""
+done
+echo "  ✓ REGION: $REGION"
+echo ""
+
 # RDS Endpoint — obrigatório
 while true; do
   echo "Endpoint do RDS (sem porta):"
@@ -94,9 +107,11 @@ echo ""
 # Confirmação
 echo "--------------------------------------------"
 echo " Resumo da configuração:"
+echo "   REGION      = $REGION"
 echo "   DB_HOST     = $DB_HOST"
 echo "   DB_NAME     = $DB_NAME"
 echo "   DB_USER     = $DB_USER"
+echo "   DB_PASSWORD = $DB_PASSWORD"
 echo "   DB_SSL      = $DB_SSL"
 echo "   CORS_ORIGIN = $CORS_ORIGIN"
 echo "   GITHUB_BASE = ${GITHUB_BASE:-'(upload manual)'}"
