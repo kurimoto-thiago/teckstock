@@ -125,7 +125,7 @@ read -p "Confirma e inicia a instalação? (s/N): " CONFIRM
 echo ""
 echo "--- [1/6] Atualizando sistema e dependências ---"
 dnf update -y
-dnf install -y wget tar python3 nginx
+dnf install -y wget curl tar python3 nginx
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 4 — Node Exporter
