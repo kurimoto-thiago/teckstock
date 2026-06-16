@@ -133,12 +133,27 @@ prompt_field() {
   local secret="$3"   # true = oculta no echo
   local result
 
+  # ── Por que >&2 e </dev/tty? ──────────────────────────────────────────────
+  # Esta função é chamada como: VAR=$(prompt_field ...)
+  # A sintaxe $() captura TODO o stdout da função.
+  # Se os echo de label forem para stdout, o texto do label vai para VAR
+  # em vez de aparecer no terminal — e o usuário só vê o cursor piscando.
+  # Solução:
+  #   echo ... >&2        → manda o label para stderr (aparece no terminal,
+  #                          não é capturado pelo $())
+  #   read ... </dev/tty  → garante que o read lê do terminal mesmo dentro
+  #                          de uma subshell criada pelo $()
+  # O único echo sem >&2 é o final (echo "${result:-$current}"), que é
+  # justamente o valor que queremos capturar na variável.
+  # ──────────────────────────────────────────────────────────────────────────
+
   if [[ "$secret" == "true" ]]; then
-    echo "  $label (Enter para manter):"
-    read -s -p "    → " result; echo ""
+    echo "  $label (Enter para manter):" >&2
+    read -s -p "    → " result </dev/tty
+    echo "" >&2
   else
-    echo "  $label (Enter para manter: ${current:-'(vazio)'}):"
-    read -p "    → " result
+    echo "  $label (Enter para manter: ${current:-'(vazio)'}):" >&2
+    read -p "    → " result </dev/tty
   fi
   echo "${result:-$current}"
 }
