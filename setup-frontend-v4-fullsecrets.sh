@@ -85,11 +85,15 @@ echo "  GITHUB_SUBDIR        = ${GITHUB_SUBDIR:-'(raiz)'}"
 echo "============================================"
 echo ""
 
+# ── Função de entrada com label garantido ──────────────────────────────────
+# Usa printf em vez de echo+read separados para evitar condição de corrida
+# entre stdout e stderr. Destaca o nome do campo em negrito.
 prompt_field() {
   local label="$1" current="$2"
-  echo "  $label (Enter para manter: ${current:-'(vazio)'}):"
-  read -p "    → " result
-  echo "${result:-$current}"
+  local BOLD=$'\033[1m' RESET=$'\033[0m'
+  printf "  ${BOLD}%s${RESET}\n       (Enter para manter: %s)\n    → " "$label" "${current:-'(vazio)'}"
+  read result
+  printf "%s\n" "${result:-$current}"
 }
 
 if [[ "$EXISTING" == "true" ]]; then
