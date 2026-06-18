@@ -85,15 +85,26 @@ echo "  GITHUB_SUBDIR        = ${GITHUB_SUBDIR:-'(raiz)'}"
 echo "============================================"
 echo ""
 
-# ── Função de entrada com label garantido ──────────────────────────────────
-# Usa printf em vez de echo+read separados para evitar condição de corrida
-# entre stdout e stderr. Destaca o nome do campo em negrito.
 prompt_field() {
   local label="$1" current="$2"
-  local BOLD=$'\033[1m' RESET=$'\033[0m'
-  printf "  ${BOLD}%s${RESET}\n       (Enter para manter: %s)\n    → " "$label" "${current:-'(vazio)'}"
-  read result
-  printf "%s\n" "${result:-$current}"
+
+  # ── Por que >&2 e </dev/tty? ──────────────────────────────────────────────
+  # Esta função é chamada como: VAR=$(prompt_field ...)
+  # A sintaxe $() captura TODO o stdout da função.
+  # Se o echo do label for para stdout, o texto do label vai para VAR
+  # em vez de aparecer no terminal — e o usuário só vê o cursor piscando.
+  # Solução:
+  #   echo ... >&2        → manda o label para stderr (aparece no terminal,
+  #                          não é capturado pelo $())
+  #   read ... </dev/tty  → garante que o read lê do terminal mesmo dentro
+  #                          de uma subshell criada pelo $()
+  # O único echo sem >&2 é o final (echo "${result:-$current}"), que é
+  # justamente o valor que queremos capturar na variável.
+  # ──────────────────────────────────────────────────────────────────────────
+
+  echo "  $label (Enter para manter: ${current:-'(vazio)'}):" >&2
+  read -p "    → " result </dev/tty
+  echo "${result:-$current}"
 }
 
 if [[ "$EXISTING" == "true" ]]; then
