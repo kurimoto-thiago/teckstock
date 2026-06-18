@@ -244,7 +244,7 @@ fi
 echo ""
 echo "--- [1/6] Sistema + Nginx ---"
 dnf update -y
-dnf install -y wget curl tar python3 nginx
+dnf install -y wget tar python3 nginx
 
 echo ""
 echo "--- [2/6] Node Exporter v${NODE_EXPORTER_VERSION} ---"
