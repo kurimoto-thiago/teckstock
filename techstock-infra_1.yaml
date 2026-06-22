@@ -241,6 +241,7 @@ Resources:
 
   PrivateRoute:
     Type: AWS::EC2::Route
+    DependsOn: NatGateway
     Properties:
       RouteTableId: !Ref PrivateRouteTable
       DestinationCidrBlock: 0.0.0.0/0
@@ -434,6 +435,12 @@ Resources:
             #!/bin/bash
             set -e
             exec > /var/log/techstock-backend-setup.log 2>&1
+
+            # ── SSM Agent (Amazon Linux 2023 minimal não inclui por padrão) ───
+            dnf install -y amazon-ssm-agent 2>/dev/null || true
+            systemctl enable amazon-ssm-agent 2>/dev/null || true
+            systemctl start amazon-ssm-agent 2>/dev/null || true
+
             echo "=== TechStock Backend Setup: $(date) ==="
 
             # ── Variaveis injetadas pelo CloudFormation ────────────────────────
@@ -626,6 +633,12 @@ Resources:
             #!/bin/bash
             set -e
             exec > /var/log/techstock-frontend-setup.log 2>&1
+
+            # ── SSM Agent (Amazon Linux 2023 minimal não inclui por padrão) ───
+            dnf install -y amazon-ssm-agent 2>/dev/null || true
+            systemctl enable amazon-ssm-agent 2>/dev/null || true
+            systemctl start amazon-ssm-agent 2>/dev/null || true
+
             echo "=== TechStock Frontend Setup: $(date) ==="
 
             # ── Variaveis injetadas pelo CloudFormation ────────────────────────
@@ -800,6 +813,12 @@ Resources:
             #!/bin/bash
             set -e
             exec > /var/log/techstock-monitoring-setup.log 2>&1
+
+            # ── SSM Agent (Amazon Linux 2023 minimal não inclui por padrão) ───
+            dnf install -y amazon-ssm-agent 2>/dev/null || true
+            systemctl enable amazon-ssm-agent 2>/dev/null || true
+            systemctl start amazon-ssm-agent 2>/dev/null || true
+
             echo "=== TechStock Monitoring Setup: $(date) ==="
 
             # ── Variaveis injetadas pelo CloudFormation ─────────────────────
