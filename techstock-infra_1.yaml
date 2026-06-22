@@ -1,0 +1,1343 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  TechStock — Infraestrutura AWS Completa
+  VPC · RDS PostgreSQL · EC2 Backend (Node.js) · EC2 Frontend (Nginx) · EC2 Monitoring
+  (Prometheus + Grafana + Nginx proxy) · Application Load Balancer
+  Compatível com AWS Learner Lab · us-east-1 · sem HTTPS · sem Multi-AZ
+
+# ════════════════════════════════════════════════════════════════════════════
+# METADATA — agrupa parâmetros no Console AWS
+# ════════════════════════════════════════════════════════════════════════════
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: {default: Banco de Dados}
+        Parameters: [DBUsername, DBPassword]
+      - Label: {default: Instâncias EC2}
+        Parameters: [KeyPairName, BackendInstanceType, FrontendInstanceType, MonitoringInstanceType]
+      - Label: {default: Aplicação e Monitoramento}
+        Parameters: [GrafanaPassword, PrometheusVersion, NodeExporterVersion]
+      - Label: {default: GitHub (opcional — download automático dos arquivos)}
+        Parameters: [GitHubRawBase, GitHubSubdirBackend, GitHubSubdirFrontend]
+    ParameterLabels:
+      DBUsername:            {default: Usuário PostgreSQL}
+      DBPassword:            {default: Senha PostgreSQL}
+      KeyPairName:           {default: Par de chaves EC2}
+      BackendInstanceType:   {default: Tipo EC2 Backend}
+      FrontendInstanceType:  {default: Tipo EC2 Frontend}
+      MonitoringInstanceType:{default: Tipo EC2 Monitoring}
+      GrafanaPassword:       {default: Senha Grafana admin}
+      PrometheusVersion:     {default: Versão Prometheus}
+      NodeExporterVersion:   {default: Versão Node Exporter}
+      GitHubRawBase:         {default: URL raw do repositório GitHub}
+      GitHubSubdirBackend:   {default: Subdiretório do backend}
+      GitHubSubdirFrontend:  {default: Subdiretório do frontend}
+
+# ════════════════════════════════════════════════════════════════════════════
+# PARÂMETROS
+# ════════════════════════════════════════════════════════════════════════════
+Parameters:
+
+  DBUsername:
+    Type: String
+    Default: techstock_user
+    Description: Usuário administrador do PostgreSQL
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9_]+'
+    MinLength: 1
+    MaxLength: 41
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 41
+    Description: Senha do banco (minimo 8 caracteres — nao use / @ ")
+    AllowedPattern: '[^\/@"]+'
+    ConstraintDescription: Nao use / @ " na senha
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: vockey
+    Description: Par de chaves EC2 (vockey no Learner Lab)
+
+  BackendInstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t2.micro, t2.small, t3.micro, t3.small]
+    Description: Tipo de instancia para o Backend Node.js
+
+  FrontendInstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t2.micro, t2.small, t3.micro, t3.small]
+    Description: Tipo de instancia para o Frontend Nginx
+
+  MonitoringInstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues: [t2.small, t2.medium, t3.small, t3.medium]
+    Description: Tipo de instancia para Prometheus + Grafana (minimo small)
+
+  GrafanaPassword:
+    Type: String
+    Default: TechStock@2024
+    NoEcho: true
+    MinLength: 8
+    Description: Senha do usuario admin do Grafana
+
+  PrometheusVersion:
+    Type: String
+    Default: '2.51.2'
+    Description: Versao do Prometheus a instalar
+
+  NodeExporterVersion:
+    Type: String
+    Default: '1.7.0'
+    Description: Versao do Node Exporter a instalar
+
+  GitHubRawBase:
+    Type: String
+    Default: ''
+    Description: >
+      URL base raw do GitHub. Ex: https://raw.githubusercontent.com/usuario/repo/main
+      Deixe em branco para copiar arquivos manualmente via SSM Session Manager.
+
+  GitHubSubdirBackend:
+    Type: String
+    Default: ''
+    Description: "Subdiretorio do backend no repo (ex: backend). Vazio = raiz."
+
+  GitHubSubdirFrontend:
+    Type: String
+    Default: ''
+    Description: "Subdiretorio do frontend no repo (ex: frontend). Vazio = raiz."
+
+# ════════════════════════════════════════════════════════════════════════════
+# RESOURCES
+# ════════════════════════════════════════════════════════════════════════════
+Resources:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # VPC E REDE
+  # ──────────────────────────────────────────────────────────────────────────
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: techstock-vpc
+
+  PubSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: techstock-pub-1a
+
+  PubSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: techstock-pub-1b
+
+  PrivSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: techstock-priv-1a
+
+  PrivSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: techstock-priv-1b
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: techstock-igw
+
+  VPCIGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: VPCIGWAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PubSubnetA
+      Tags:
+        - Key: Name
+          Value: techstock-nat
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: techstock-rt-pub
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCIGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PubSubnetAAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PubSubnetBAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: techstock-rt-priv
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivSubnetAAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivSubnetBAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # SECURITY GROUPS
+  # Ordem: SGMonitoring antes de SGBackend/SGFrontend (são referenciados neles)
+  # ──────────────────────────────────────────────────────────────────────────
+
+  SGALB:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: techstock-sg-alb
+      GroupDescription: TechStock ALB - HTTP inbound internet
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP from internet
+      Tags:
+        - Key: Name
+          Value: techstock-sg-alb
+
+  SGMonitoring:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: techstock-sg-monitoring
+      GroupDescription: TechStock Monitoring Grafana Prometheus Nginx
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref SGALB
+          Description: Nginx proxy from ALB
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          CidrIp: 10.0.0.0/16
+          Description: Node Exporter self-scrape within VPC
+      Tags:
+        - Key: Name
+          Value: techstock-sg-monitoring
+
+  SGBackend:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: techstock-sg-backend
+      GroupDescription: TechStock Backend Node.js API
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref SGALB
+          Description: API from ALB
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref SGMonitoring
+          Description: API metrics scrape from Monitoring
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          SourceSecurityGroupId: !Ref SGMonitoring
+          Description: Node Exporter from Monitoring
+      Tags:
+        - Key: Name
+          Value: techstock-sg-backend
+
+  SGFrontend:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: techstock-sg-frontend
+      GroupDescription: TechStock Frontend Nginx static files
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref SGALB
+          Description: HTTP from ALB
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          SourceSecurityGroupId: !Ref SGMonitoring
+          Description: Node Exporter from Monitoring
+      Tags:
+        - Key: Name
+          Value: techstock-sg-frontend
+
+  SGRDS:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: techstock-sg-rds
+      GroupDescription: TechStock RDS PostgreSQL
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref SGBackend
+          Description: PostgreSQL from Backend only
+      Tags:
+        - Key: Name
+          Value: techstock-sg-rds
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # RDS POSTGRESQL
+  # ──────────────────────────────────────────────────────────────────────────
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: techstock-db-subnet-group
+      DBSubnetGroupDescription: TechStock RDS subnets privadas (2 AZs obrigatorio)
+      SubnetIds:
+        - !Ref PrivSubnetA
+        - !Ref PrivSubnetB
+      Tags:
+        - Key: Name
+          Value: techstock-db-subnet-group
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      DBInstanceIdentifier: techstock-db
+      DBInstanceClass: db.t3.micro
+      Engine: postgres
+      EngineVersion: '15'
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DBName: techstock
+      AllocatedStorage: '20'
+      StorageType: gp2
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref SGRDS
+      BackupRetentionPeriod: 0
+      # Learner Lab: nao suportados
+      MonitoringInterval: 0
+      EnablePerformanceInsights: false
+      DeletionProtection: false
+      CopyTagsToSnapshot: false
+      Tags:
+        - Key: Name
+          Value: techstock-db
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # EC2 BACKEND (Node.js + Node Exporter)
+  # Depende de: DBInstance (endpoint no .env)
+  # NÃO depende do ALB — CORS_ORIGIN=* inicialmente
+  # Atualize CORS_ORIGIN via SSM Session Manager apos o deploy
+  # ──────────────────────────────────────────────────────────────────────────
+
+  BackendInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: [DBInstance, NatGateway]
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-minimal-kernel-default-x86_64}}'
+      InstanceType: !Ref BackendInstanceType
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PrivSubnetA
+      SecurityGroupIds:
+        - !Ref SGBackend
+      IamInstanceProfile: LabInstanceProfile
+      Tags:
+        - Key: Name
+          Value: techstock-backend
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            set -e
+            exec > /var/log/techstock-backend-setup.log 2>&1
+            echo "=== TechStock Backend Setup: $(date) ==="
+
+            # ── Variaveis injetadas pelo CloudFormation ────────────────────────
+            # Cada linha abaixo recebe o valor real antes do script executar:
+            _DB_HOST="${DBInstance.Endpoint.Address}"
+            _DB_USER="${DBUsername}"
+            _DB_PASS="${DBPassword}"
+            _REGION="${AWS::Region}"
+            _GITHUB_RAW="${GitHubRawBase}"
+            _GITHUB_SUBDIR="${GitHubSubdirBackend}"
+            _NE_VER="${NodeExporterVersion}"
+
+            # Monta URL base dos arquivos do backend
+            if [[ -n "$_GITHUB_SUBDIR" && -n "$_GITHUB_RAW" ]]; then
+              _GITHUB_BASE="$_GITHUB_RAW/$_GITHUB_SUBDIR"
+            else
+              _GITHUB_BASE="$_GITHUB_RAW"
+            fi
+
+            echo "DB_HOST: $_DB_HOST"
+            echo "GitHub: ${!_GITHUB_BASE:-(nao configurado)}"
+
+            # ── Dependencias do sistema ──────────────────────────────────────
+            dnf update -y
+            dnf install -y nodejs npm postgresql15 wget curl
+            echo "Node.js: $(node --version) | npm: $(npm --version)"
+
+            # ── Usuario de sistema (sem shell de login) ─────────────────────
+            useradd -r -m -d /opt/techstock -s /sbin/nologin techstock 2>/dev/null || true
+            mkdir -p /opt/techstock/public
+
+            # ── Download dos arquivos da aplicacao ──────────────────────────
+            if [[ -n "$_GITHUB_BASE" ]]; then
+              echo "Baixando arquivos de: $_GITHUB_BASE"
+              cd /opt/techstock
+              for f in server.js package.json; do
+                wget -q -O "$f" "$_GITHUB_BASE/$f" \
+                  && echo "  OK: $f" \
+                  || echo "  AVISO: $f nao encontrado — copie via SSM"
+              done
+              # schema.sql pode estar na raiz ou no subdiretorio
+              wget -q -O schema.sql "$_GITHUB_BASE/schema.sql" 2>/dev/null \
+                || wget -q -O schema.sql "$_GITHUB_RAW/schema.sql" 2>/dev/null \
+                || echo "  AVISO: schema.sql nao encontrado — execute manualmente"
+              wget -q -O package-lock.json "$_GITHUB_BASE/package-lock.json" 2>/dev/null || true
+            else
+              echo "GitHub nao configurado."
+              echo "Copie os arquivos para /opt/techstock/ via:"
+              echo "  SSM Session Manager -> aws ssm start-session --target INSTANCE_ID"
+            fi
+
+            # ── Arquivo .env ────────────────────────────────────────────────
+            # CORS_ORIGIN=* permite qualquer origem — atualize apos o deploy
+            # com o DNS real do ALB via: sudo nano /opt/techstock/.env
+            cat > /opt/techstock/.env << ENVEOF
+            DB_HOST=$_DB_HOST
+            DB_PORT=5432
+            DB_NAME=techstock
+            DB_USER=$_DB_USER
+            DB_PASSWORD=$_DB_PASS
+            DB_SSL=true
+            DB_POOL_MIN=1
+            DB_POOL_MAX=5
+            PORT=3000
+            NODE_ENV=production
+            CORS_ORIGIN=*
+            AWS_REGION=$_REGION
+            ENVEOF
+
+            chown techstock:techstock /opt/techstock/.env
+            chmod 640 /opt/techstock/.env
+
+            # ── npm install ─────────────────────────────────────────────────
+            if [[ -f /opt/techstock/package.json ]]; then
+              cd /opt/techstock
+              npm install --omit=dev
+              echo "Pacotes instalados: $(ls node_modules | wc -l)"
+            else
+              echo "package.json nao encontrado — npm install sera necessario apos upload"
+            fi
+
+            # ── Schema SQL ──────────────────────────────────────────────────
+            if [[ -f /opt/techstock/schema.sql ]]; then
+              echo "Inicializando schema do banco..."
+              PGPASSWORD="$_DB_PASS" psql \
+                -h "$_DB_HOST" -U "$_DB_USER" -d techstock \
+                --set=sslmode=require \
+                -f /opt/techstock/schema.sql 2>&1 \
+                && echo "Schema: OK" \
+                || echo "AVISO: schema falhou — banco pode ainda estar iniciando (tente manualmente)"
+            fi
+
+            # ── Permissoes finais ───────────────────────────────────────────
+            chown -R techstock:techstock /opt/techstock
+            chmod 755 /opt/techstock
+
+            # ── Servico systemd ─────────────────────────────────────────────
+            cat > /etc/systemd/system/techstock.service << 'SVCEOF'
+            [Unit]
+            Description=TechStock Backend API
+            After=network.target
+
+            [Service]
+            Type=simple
+            User=techstock
+            WorkingDirectory=/opt/techstock
+            EnvironmentFile=/opt/techstock/.env
+            ExecStart=/usr/bin/node server.js
+            Restart=on-failure
+            RestartSec=5
+            StandardOutput=journal
+            StandardError=journal
+            SyslogIdentifier=techstock
+
+            [Install]
+            WantedBy=multi-user.target
+            SVCEOF
+
+            systemctl daemon-reload
+            systemctl enable techstock
+            systemctl start techstock
+            sleep 5
+            echo "techstock: $(systemctl is-active techstock)"
+
+            # ── Node Exporter ───────────────────────────────────────────────
+            echo "Instalando Node Exporter v$_NE_VER..."
+            wget -q "https://github.com/prometheus/node_exporter/releases/download/v$_NE_VER/node_exporter-$_NE_VER.linux-amd64.tar.gz" \
+              -O /tmp/ne.tar.gz
+            tar xzf /tmp/ne.tar.gz -C /tmp/
+            cp "/tmp/node_exporter-$_NE_VER.linux-amd64/node_exporter" /usr/local/bin/
+            chmod +x /usr/local/bin/node_exporter
+
+            cat > /etc/systemd/system/node_exporter.service << 'NEEOF'
+            [Unit]
+            Description=Prometheus Node Exporter
+            After=network.target
+
+            [Service]
+            Type=simple
+            User=nobody
+            ExecStart=/usr/local/bin/node_exporter
+            Restart=on-failure
+            RestartSec=5
+
+            [Install]
+            WantedBy=multi-user.target
+            NEEOF
+
+            systemctl daemon-reload
+            systemctl enable --now node_exporter
+            echo "node_exporter: $(systemctl is-active node_exporter)"
+
+            # ── Verificacao ─────────────────────────────────────────────────
+            sleep 5
+            echo ""
+            echo "=== Verificacao Final ==="
+            curl -sf http://localhost:3000/api/health 2>/dev/null \
+              && echo "" \
+              || echo "API ainda iniciando — aguarde 30s e tente novamente"
+            curl -sf http://localhost:9100/metrics 2>/dev/null | grep "^node_load1" || true
+            echo ""
+            echo "=== Setup Backend Concluido: $(date) ==="
+            echo ""
+            echo "PROXIMOS PASSOS:"
+            echo "  1. Atualize CORS_ORIGIN no .env com o DNS do ALB (ver Outputs da stack)"
+            echo "  2. sudo systemctl restart techstock"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # EC2 FRONTEND (Nginx servindo arquivos estaticos)
+  # Depende de: nada (config.js usa PLACEHOLDER — atualize apos o deploy)
+  # ──────────────────────────────────────────────────────────────────────────
+
+  FrontendInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: NatGateway
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-minimal-kernel-default-x86_64}}'
+      InstanceType: !Ref FrontendInstanceType
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PrivSubnetA
+      SecurityGroupIds:
+        - !Ref SGFrontend
+      IamInstanceProfile: LabInstanceProfile
+      Tags:
+        - Key: Name
+          Value: techstock-frontend
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            set -e
+            exec > /var/log/techstock-frontend-setup.log 2>&1
+            echo "=== TechStock Frontend Setup: $(date) ==="
+
+            # ── Variaveis injetadas pelo CloudFormation ────────────────────────
+            _GITHUB_RAW="${GitHubRawBase}"
+            _GITHUB_SUBDIR="${GitHubSubdirFrontend}"
+            _NE_VER="${NodeExporterVersion}"
+            _WEBROOT="/usr/share/nginx/html/techstock"
+
+            if [[ -n "$_GITHUB_SUBDIR" && -n "$_GITHUB_RAW" ]]; then
+              _GITHUB_BASE="$_GITHUB_RAW/$_GITHUB_SUBDIR"
+            else
+              _GITHUB_BASE="$_GITHUB_RAW"
+            fi
+
+            # ── Nginx ────────────────────────────────────────────────────────
+            dnf update -y
+            dnf install -y nginx wget
+            echo "Nginx: $(nginx -v 2>&1)"
+
+            # Substitui nginx.conf padrao do AL2023 (tem server block default conflitante)
+            cat > /etc/nginx/nginx.conf << 'NGXEOF'
+            user nginx;
+            worker_processes auto;
+            error_log /var/log/nginx/error.log notice;
+            pid /run/nginx.pid;
+            include /usr/share/nginx/modules/*.conf;
+            events { worker_connections 1024; }
+            http {
+                log_format main '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent';
+                access_log /var/log/nginx/access.log main;
+                sendfile on; tcp_nopush on; keepalive_timeout 65;
+                include /etc/nginx/mime.types;
+                default_type application/octet-stream;
+                include /etc/nginx/conf.d/*.conf;
+            }
+            NGXEOF
+
+            # ── Diretorio dos arquivos ──────────────────────────────────────
+            mkdir -p "$_WEBROOT"
+            chown -R nginx:nginx "$_WEBROOT"
+            chmod -R 755 "$_WEBROOT"
+
+            # ── Download dos arquivos do frontend ───────────────────────────
+            if [[ -n "$_GITHUB_BASE" ]]; then
+              echo "Baixando arquivos de: $_GITHUB_BASE"
+              for f in index.html style.css app.js; do
+                wget -q -O "$_WEBROOT/$f" "$_GITHUB_BASE/$f" \
+                  && echo "  OK: $f" \
+                  || echo "  AVISO: $f nao encontrado"
+              done
+            else
+              echo "GitHub nao configurado — copie os arquivos para $_WEBROOT/ via SSM"
+              # Cria pagina temporaria para o health check passar
+              echo '<!DOCTYPE html><html><body><h1>TechStock - Configure a API URL</h1></body></html>' \
+                > "$_WEBROOT/index.html"
+            fi
+
+            # ── config.js ───────────────────────────────────────────────────
+            # PLACEHOLDER: atualize com o DNS real do ALB apos o deploy
+            # Edite: sudo nano /usr/share/nginx/html/techstock/config.js
+            # Valor correto esta em: CloudFormation > Outputs > ALBDNSName
+            cat > "$_WEBROOT/config.js" << 'CFGEOF'
+            // ATUALIZE apiUrl com o DNS do ALB (ver Outputs da stack CloudFormation)
+            // sudo nano /usr/share/nginx/html/techstock/config.js
+            window.TECHSTOCK_CONFIG = {
+              apiUrl: 'PLACEHOLDER_SUBSTITUA_COM_DNS_DO_ALB'
+            };
+            CFGEOF
+
+            chown -R nginx:nginx "$_WEBROOT"
+            chmod -R 755 "$_WEBROOT"
+
+            # ── Virtual host Nginx ───────────────────────────────────────────
+            cat > /etc/nginx/conf.d/techstock.conf << 'VHEOF'
+            server {
+                listen 80 default_server;
+                server_name _;
+                root /usr/share/nginx/html/techstock;
+                index index.html;
+
+                # config.js: sem cache (URL do ALB pode ser atualizada)
+                location = /config.js {
+                    add_header Cache-Control "no-store, no-cache, must-revalidate";
+                    add_header Pragma "no-cache";
+                    expires -1;
+                }
+
+                # SPA: redireciona rotas desconhecidas para index.html
+                location / {
+                    try_files $uri $uri/ /index.html;
+                    add_header Cache-Control "no-cache";
+                    add_header X-Frame-Options "SAMEORIGIN";
+                }
+
+                location ~* \.(css|js)$ {
+                    expires 1h;
+                    add_header Cache-Control "public, max-age=3600";
+                }
+
+                # Health check do ALB
+                location = /health {
+                    default_type application/json;
+                    return 200 '{"ok":true,"service":"frontend-nginx"}';
+                    add_header Content-Type application/json;
+                }
+
+                access_log /var/log/nginx/techstock-access.log;
+                error_log  /var/log/nginx/techstock-error.log;
+            }
+            VHEOF
+
+            nginx -t && echo "Nginx config: OK"
+            systemctl enable nginx
+            systemctl restart nginx
+            sleep 2
+            echo "nginx: $(systemctl is-active nginx)"
+
+            # ── Node Exporter ────────────────────────────────────────────────
+            wget -q "https://github.com/prometheus/node_exporter/releases/download/v$_NE_VER/node_exporter-$_NE_VER.linux-amd64.tar.gz" \
+              -O /tmp/ne.tar.gz
+            tar xzf /tmp/ne.tar.gz -C /tmp/
+            cp "/tmp/node_exporter-$_NE_VER.linux-amd64/node_exporter" /usr/local/bin/
+            chmod +x /usr/local/bin/node_exporter
+
+            cat > /etc/systemd/system/node_exporter.service << 'NEEOF'
+            [Unit]
+            Description=Prometheus Node Exporter
+            After=network.target
+            [Service]
+            Type=simple
+            User=nobody
+            ExecStart=/usr/local/bin/node_exporter
+            Restart=on-failure
+            [Install]
+            WantedBy=multi-user.target
+            NEEOF
+
+            systemctl daemon-reload
+            systemctl enable --now node_exporter
+
+            echo ""
+            echo "=== Setup Frontend Concluido: $(date) ==="
+            echo ""
+            echo "PROXIMO PASSO OBRIGATORIO:"
+            echo "  Edite config.js com o DNS do ALB:"
+            echo "  sudo nano $_WEBROOT/config.js"
+            echo "  (DNS do ALB esta nos Outputs da stack CloudFormation)"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # EC2 MONITORING (Prometheus + Grafana + Nginx proxy)
+  # Depende de: ALB (DNS para grafana.ini) + BackendInstance (IP para prometheus.yml)
+  # Esta dependencia garante que ALB e Backend existam antes do Monitoring
+  # ──────────────────────────────────────────────────────────────────────────
+
+  MonitoringInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: [ALB, BackendInstance, NatGateway]
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-minimal-kernel-default-x86_64}}'
+      InstanceType: !Ref MonitoringInstanceType
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PrivSubnetA
+      SecurityGroupIds:
+        - !Ref SGMonitoring
+      IamInstanceProfile: LabInstanceProfile
+      Tags:
+        - Key: Name
+          Value: techstock-monitoring
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            set -e
+            exec > /var/log/techstock-monitoring-setup.log 2>&1
+            echo "=== TechStock Monitoring Setup: $(date) ==="
+
+            # ── Variaveis injetadas pelo CloudFormation ─────────────────────
+            _ALB_DNS="${ALB.DNSName}"
+            _BACKEND_IP="${BackendInstance.PrivateIp}"
+            _PROM_VER="${PrometheusVersion}"
+            _NE_VER="${NodeExporterVersion}"
+            _GRAFANA_PASS="${GrafanaPassword}"
+            _REGION="${AWS::Region}"
+
+            echo "ALB DNS: $_ALB_DNS"
+            echo "Backend IP: $_BACKEND_IP"
+
+            # ── Dependencias do sistema ─────────────────────────────────────
+            dnf update -y
+            dnf install -y wget curl nginx python3
+
+            # ── [1/5] Node Exporter ─────────────────────────────────────────
+            echo "--- [1/5] Node Exporter v$_NE_VER ---"
+            useradd --no-create-home --shell /bin/false node_exporter 2>/dev/null || true
+            wget -q "https://github.com/prometheus/node_exporter/releases/download/v$_NE_VER/node_exporter-$_NE_VER.linux-amd64.tar.gz" \
+              -O /tmp/ne.tar.gz
+            tar xzf /tmp/ne.tar.gz -C /tmp/
+            cp "/tmp/node_exporter-$_NE_VER.linux-amd64/node_exporter" /usr/local/bin/
+            chmod +x /usr/local/bin/node_exporter
+
+            cat > /etc/systemd/system/node_exporter.service << 'NEEOF'
+            [Unit]
+            Description=Prometheus Node Exporter
+            After=network.target
+            [Service]
+            Type=simple
+            User=nobody
+            ExecStart=/usr/local/bin/node_exporter
+            Restart=on-failure
+            [Install]
+            WantedBy=multi-user.target
+            NEEOF
+
+            systemctl daemon-reload && systemctl enable --now node_exporter
+            echo "node_exporter: $(systemctl is-active node_exporter)"
+
+            # ── [2/5] Prometheus ────────────────────────────────────────────
+            echo "--- [2/5] Prometheus v$_PROM_VER ---"
+            useradd --no-create-home --shell /bin/false prometheus 2>/dev/null || true
+            mkdir -p /etc/prometheus /var/lib/prometheus
+            chown prometheus:prometheus /etc/prometheus /var/lib/prometheus
+
+            wget -q "https://github.com/prometheus/prometheus/releases/download/v$_PROM_VER/prometheus-$_PROM_VER.linux-amd64.tar.gz" \
+              -O /tmp/prom.tar.gz
+            tar xzf /tmp/prom.tar.gz -C /tmp/
+            cp "/tmp/prometheus-$_PROM_VER.linux-amd64/prometheus" /usr/local/bin/
+            cp "/tmp/prometheus-$_PROM_VER.linux-amd64/promtool"   /usr/local/bin/
+
+            # prometheus.yml: coleta metricas do Backend via IP privado
+            # metrics_path /prometheus/metrics: necessario pois Prometheus sobe
+            # com --web.route-prefix=/prometheus (self-monitoring)
+            cat > /etc/prometheus/prometheus.yml << PROMEOF
+            global:
+              scrape_interval:     15s
+              evaluation_interval: 15s
+              external_labels:
+                environment: techstock-lab
+                app: techstock
+
+            scrape_configs:
+
+              - job_name: 'prometheus'
+                metrics_path: /prometheus/metrics
+                static_configs:
+                  - targets: ['localhost:9090']
+                    labels:
+                      instance: monitoring
+
+              - job_name: 'node-exporter-monitoring'
+                static_configs:
+                  - targets: ['localhost:9100']
+                    labels:
+                      instance: monitoring
+
+              - job_name: 'techstock-app'
+                metrics_path: /metrics
+                static_configs:
+                  - targets: ['$_BACKEND_IP:3000']
+                    labels:
+                      instance: backend
+
+              - job_name: 'node-exporter-backend'
+                static_configs:
+                  - targets: ['$_BACKEND_IP:9100']
+                    labels:
+                      instance: backend
+            PROMEOF
+
+            chown prometheus:prometheus /etc/prometheus/prometheus.yml
+            promtool check config /etc/prometheus/prometheus.yml \
+              && echo "prometheus.yml: OK" \
+              || echo "AVISO: prometheus.yml com erro — verifique"
+
+            cat > /etc/systemd/system/prometheus.service << 'PROMSVCEOF'
+            [Unit]
+            Description=Prometheus Monitoring
+            After=network.target
+
+            [Service]
+            Type=simple
+            User=prometheus
+            ExecStart=/usr/local/bin/prometheus \
+              --config.file=/etc/prometheus/prometheus.yml \
+              --storage.tsdb.path=/var/lib/prometheus \
+              --storage.tsdb.retention.time=15d \
+              --web.listen-address=0.0.0.0:9090 \
+              --web.external-url=/prometheus \
+              --web.route-prefix=/prometheus
+            Restart=on-failure
+            RestartSec=5
+
+            [Install]
+            WantedBy=multi-user.target
+            PROMSVCEOF
+
+            systemctl daemon-reload && systemctl enable --now prometheus
+            sleep 3
+            echo "prometheus: $(systemctl is-active prometheus)"
+
+            # ── [3/5] Nginx proxy reverso ────────────────────────────────────
+            echo "--- [3/5] Nginx ---"
+
+            # Substitui nginx.conf padrao do AL2023
+            cat > /etc/nginx/nginx.conf << 'NGXEOF'
+            user nginx;
+            worker_processes auto;
+            error_log /var/log/nginx/error.log notice;
+            pid /run/nginx.pid;
+            include /usr/share/nginx/modules/*.conf;
+            events { worker_connections 1024; }
+            http {
+                include /etc/nginx/mime.types;
+                default_type application/octet-stream;
+                include /etc/nginx/conf.d/*.conf;
+            }
+            NGXEOF
+
+            cat > /etc/nginx/conf.d/techstock-monitoring.conf << 'MONEOF'
+            server {
+                listen 80;
+                server_name _;
+
+                # /grafana/ -> Grafana :3000
+                location /grafana/ {
+                    proxy_pass         http://127.0.0.1:3000;
+                    proxy_set_header   Host $host;
+                    proxy_set_header   X-Real-IP $remote_addr;
+                    proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_read_timeout 300;
+                }
+
+                # /prometheus/ -> Prometheus :9090
+                location /prometheus/ {
+                    proxy_pass         http://127.0.0.1:9090;
+                    proxy_set_header   Host $host;
+                    proxy_set_header   X-Real-IP $remote_addr;
+                }
+
+                # Health check do ALB Target Group
+                location = /health {
+                    default_type application/json;
+                    return 200 '{"ok":true,"service":"monitoring-nginx"}';
+                    add_header Content-Type application/json;
+                }
+            }
+            MONEOF
+
+            nginx -t && echo "Nginx config: OK"
+            systemctl enable --now nginx
+            echo "nginx: $(systemctl is-active nginx)"
+
+            # ── [4/5] Grafana ────────────────────────────────────────────────
+            echo "--- [4/5] Grafana ---"
+
+            cat > /etc/yum.repos.d/grafana.repo << 'GREPOEOF'
+            [grafana]
+            name=grafana
+            baseurl=https://rpm.grafana.com
+            repo_gpgcheck=1
+            enabled=1
+            gpgcheck=1
+            gpgkey=https://rpm.grafana.com/gpg.key
+            sslverify=1
+            sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+            GREPOEOF
+
+            dnf install -y grafana
+
+            # grafana.ini — as 3 linhas DEVEM estar presentes juntas
+            # domain: hostname externo (sem protocolo)
+            # root_url: URL completa com o subpath /grafana/ (barra final obrigatoria)
+            # serve_from_sub_path: true — permite Grafana servir de /grafana/
+            cat > /etc/grafana/grafana.ini << GRINIEOF
+            [server]
+            http_addr = 0.0.0.0
+            http_port = 3000
+            domain           = $_ALB_DNS
+            root_url         = %(protocol)s://%(domain)s/grafana/
+            serve_from_sub_path = true
+
+            [security]
+            admin_user     = admin
+            admin_password = $_GRAFANA_PASS
+            secret_key     = techstock-$(date +%s)
+            allow_embedding = true
+            cookie_secure   = false
+            cookie_samesite = lax
+
+            [auth.anonymous]
+            enabled = false
+
+            [analytics]
+            reporting_enabled = false
+            check_for_updates = false
+
+            [log]
+            mode  = console
+            level = warn
+            GRINIEOF
+
+            chown -R grafana:grafana /etc/grafana/ /var/lib/grafana/
+            systemctl daemon-reload
+            systemctl enable --now grafana-server
+            sleep 12
+            echo "grafana-server: $(systemctl is-active grafana-server)"
+
+            # ── [5/5] Datasource Prometheus no Grafana ───────────────────────
+            echo "--- [5/5] Datasource Prometheus ---"
+            # Grafana 13: SSRF protection bloqueia localhost — usar URL do ALB
+            # O datasource UID PBFA97CFB590B2093 e hardcoded nos JSONs dos dashboards TechStock
+
+            _RETRY=0
+            _MAX_RETRY=10
+            until curl -sf "http://localhost:3000/grafana/api/health" | grep -q '"database":"ok"' \
+              || [[ $_RETRY -ge $_MAX_RETRY ]]; do
+              echo "  Aguardando Grafana... tentativa $((_RETRY+1))/$_MAX_RETRY"
+              sleep 8
+              _RETRY=$((_RETRY+1))
+            done
+
+            if curl -sf "http://localhost:3000/grafana/api/health" | grep -q '"database":"ok"'; then
+              echo "  Grafana pronto!"
+
+              # Remove datasources existentes (evita conflito de UID)
+              _DS_LIST=$(curl -s "http://admin:$_GRAFANA_PASS@localhost:3000/grafana/api/datasources" 2>/dev/null)
+              echo "$_DS_LIST" | python3 -c "
+            import sys, json
+            try:
+              ds_list = json.load(sys.stdin)
+              for ds in ds_list:
+                if ds.get('type') == 'prometheus':
+                  print(ds.get('uid',''))
+            except: pass
+            " | while read -r _UID; do
+                [[ -n "$_UID" ]] && \
+                  curl -sf -X DELETE "http://admin:$_GRAFANA_PASS@localhost:3000/grafana/api/datasources/uid/$_UID" \
+                  && echo "  Removido datasource antigo: $_UID" || true
+              done
+
+              # Cria datasource com UID fixo compativel com os dashboards TechStock
+              _DS_RESULT=$(curl -sf -X POST \
+                "http://admin:$_GRAFANA_PASS@localhost:3000/grafana/api/datasources" \
+                -H 'Content-Type: application/json' \
+                -d "{
+                  \"name\": \"Prometheus\",
+                  \"type\": \"prometheus\",
+                  \"uid\": \"PBFA97CFB590B2093\",
+                  \"url\": \"http://$_ALB_DNS/prometheus\",
+                  \"access\": \"proxy\",
+                  \"isDefault\": true,
+                  \"jsonData\": {\"timeInterval\": \"15s\"}
+                }" 2>/dev/null)
+              echo "$_DS_RESULT" | python3 -c "
+            import sys, json
+            try:
+              d = json.load(sys.stdin)
+              msg = d.get('message', str(d))
+              print(f'  Datasource: {msg}')
+            except: print('  Datasource: resposta inesperada')
+            "
+            else
+              echo "  AVISO: Grafana nao respondeu — configure o datasource manualmente"
+              echo "  URL datasource: http://$_ALB_DNS/prometheus"
+              echo "  UID: PBFA97CFB590B2093"
+            fi
+
+            # ── Verificacao final ────────────────────────────────────────────
+            echo ""
+            echo "=== Verificacao Final ==="
+            for svc in node_exporter prometheus nginx grafana-server; do
+              echo "  $svc: $(systemctl is-active $svc)"
+            done
+            curl -sf "http://localhost:9090/prometheus/api/v1/targets" 2>/dev/null | python3 -c "
+            import sys, json
+            try:
+              d = json.load(sys.stdin)
+              for t in d['data']['activeTargets']:
+                icon = 'OK' if t['health'] == 'up' else 'DOWN'
+                print(f'  [{icon}] {t[\"labels\"][\"job\"]} | {t[\"health\"]}')
+            except Exception as e:
+              print(f'  Targets: {e}')
+            " || true
+            echo ""
+            echo "=== Setup Monitoring Concluido: $(date) ==="
+            echo ""
+            echo "Acesse:"
+            echo "  Grafana:    http://$_ALB_DNS/grafana  (admin / $_GRAFANA_PASS)"
+            echo "  Prometheus: http://$_ALB_DNS/prometheus"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # TARGET GROUPS
+  # ──────────────────────────────────────────────────────────────────────────
+
+  TGBackend:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: techstock-tg-backend
+      Protocol: HTTP
+      Port: 3000
+      VpcId: !Ref VPC
+      TargetType: instance
+      HealthCheckPath: /api/health
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: '3000'
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      Targets:
+        - Id: !Ref BackendInstance
+          Port: 3000
+      Tags:
+        - Key: Name
+          Value: techstock-tg-backend
+
+  TGFrontend:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: techstock-tg-frontend
+      Protocol: HTTP
+      Port: 80
+      VpcId: !Ref VPC
+      TargetType: instance
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: '80'
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      Targets:
+        - Id: !Ref FrontendInstance
+          Port: 80
+      Tags:
+        - Key: Name
+          Value: techstock-tg-frontend
+
+  TGMonitoring:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: techstock-tg-monitoring
+      Protocol: HTTP
+      Port: 80
+      VpcId: !Ref VPC
+      TargetType: instance
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: '80'
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      Targets:
+        - Id: !Ref MonitoringInstance
+          Port: 80
+      Tags:
+        - Key: Name
+          Value: techstock-tg-monitoring
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # APPLICATION LOAD BALANCER
+  # Acao padrao: TGBackend (rota / sem match vai para o backend)
+  # ──────────────────────────────────────────────────────────────────────────
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: VPCIGWAttachment
+    Properties:
+      Name: techstock-alb
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Subnets:
+        - !Ref PubSubnetA
+        - !Ref PubSubnetB
+      SecurityGroups:
+        - !Ref SGALB
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '60'
+      Tags:
+        - Key: Name
+          Value: techstock-alb
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Protocol: HTTP
+      Port: 80
+      # Acao padrao: encaminha para o Backend
+      # Esta acao e sobrescrita pelas rules abaixo para paths especificos
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TGBackend
+
+  # Regra 1 (prioridade mais alta) — /api/* vai para o Backend
+  RuleAPI:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 1
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /api/*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TGBackend
+
+  # Regra 2 — /grafana* vai para o Monitoring
+  RuleGrafana:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 2
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /grafana*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TGMonitoring
+
+  # Regra 3 — /prometheus* vai para o Monitoring
+  RulePrometheus:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 3
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /prometheus*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TGMonitoring
+
+  # Regra 4 — /* vai para o Frontend
+  # Menor prioridade para nao capturar /api/* /grafana* /prometheus*
+  RuleFrontend:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 4
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TGFrontend
+
+# ════════════════════════════════════════════════════════════════════════════
+# OUTPUTS — exibidos no Console apos o deploy
+# ════════════════════════════════════════════════════════════════════════════
+Outputs:
+
+  ALBDNSName:
+    Description: DNS do Application Load Balancer (use este valor em config.js e CORS_ORIGIN)
+    Value: !GetAtt ALB.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-ALBDNSName'
+
+  FrontendURL:
+    Description: URL do frontend TechStock
+    Value: !Sub 'http://${ALB.DNSName}/'
+
+  APIURL:
+    Description: URL da API (health check)
+    Value: !Sub 'http://${ALB.DNSName}/api/health'
+
+  GrafanaURL:
+    Description: URL do Grafana (admin)
+    Value: !Sub 'http://${ALB.DNSName}/grafana'
+
+  PrometheusURL:
+    Description: URL do Prometheus (targets)
+    Value: !Sub 'http://${ALB.DNSName}/prometheus/targets'
+
+  RDSEndpoint:
+    Description: Endpoint do banco de dados PostgreSQL
+    Value: !GetAtt DBInstance.Endpoint.Address
+    Export:
+      Name: !Sub '${AWS::StackName}-RDSEndpoint'
+
+  BackendPrivateIP:
+    Description: IP privado do EC2 Backend (usado no prometheus.yml — ja configurado)
+    Value: !GetAtt BackendInstance.PrivateIp
+
+  MonitoringPrivateIP:
+    Description: IP privado do EC2 Monitoring
+    Value: !GetAtt MonitoringInstance.PrivateIp
+
+  FrontendPrivateIP:
+    Description: IP privado do EC2 Frontend
+    Value: !GetAtt FrontendInstance.PrivateIp
+
+  PostDeploySteps:
+    Description: Passos obrigatorios apos o deploy
+    Value: !Sub |
+      1. Copie o ALBDNSName acima
+      2. SSM no EC2 Frontend: edite /usr/share/nginx/html/techstock/config.js
+         substitua PLACEHOLDER_SUBSTITUA_COM_DNS_DO_ALB pelo DNS do ALB
+      3. SSM no EC2 Backend: edite /opt/techstock/.env
+         substitua CORS_ORIGIN=* por CORS_ORIGIN=http://ALB_DNS
+         sudo systemctl restart techstock
+      4. Acesse http://${ALB.DNSName}/ — TechStock deve carregar
+      5. Acesse http://${ALB.DNSName}/grafana — Grafana admin / ${GrafanaPassword}
