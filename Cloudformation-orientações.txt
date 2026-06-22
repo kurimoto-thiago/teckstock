@@ -1,0 +1,5 @@
+Dois passos pós-deploy (obrigatórios)
+Os Outputs da stack mostram o ALBDNSName. Com ele:
+
+Frontend: SSM no techstock-frontend → editar /usr/share/nginx/html/techstock/config.js substituindo o PLACEHOLDER
+Backend: SSM no techstock-backend → editar /opt/techstock/.env trocando CORS_ORIGIN=* pelo DNS real → sudo systemctl restart techstock
