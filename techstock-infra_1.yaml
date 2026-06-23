@@ -465,7 +465,7 @@ Resources:
 
             # ── Dependencias do sistema ──────────────────────────────────────
             dnf update -y
-            dnf install -y nodejs npm postgresql15 wget curl
+            dnf install -y nodejs npm postgresql15 wget
             echo "Node.js: $(node --version) | npm: $(npm --version)"
 
             # ── Usuario de sistema (sem shell de login) ─────────────────────
@@ -834,7 +834,7 @@ Resources:
 
             # ── Dependencias do sistema ─────────────────────────────────────
             dnf update -y
-            dnf install -y wget curl nginx python3
+            dnf install -y wget nginx python3
 
             # ── [1/5] Node Exporter ─────────────────────────────────────────
             echo "--- [1/5] Node Exporter v$_NE_VER ---"
